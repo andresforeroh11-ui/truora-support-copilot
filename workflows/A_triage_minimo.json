@@ -1,0 +1,328 @@
+{
+  "name": "A · Triage mínimo (formulario → P1 → Supabase → Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Soporte · Nuevo ticket",
+        "formDescription": "Simulación del portal de soporte. Usa solo datos ficticios.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Cliente",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "País",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "CO"
+                  },
+                  {
+                    "option": "MX"
+                  },
+                  {
+                    "option": "BR"
+                  },
+                  {
+                    "option": "CL"
+                  },
+                  {
+                    "option": "PE"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Asunto",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Descripción",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Formulario de ticket",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "7c1f6b2e-truora-ticket-form"
+    },
+    {
+      "parameters": {
+        "tableId": "tickets",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "cliente",
+              "fieldValue": "={{ $json['Cliente'] }}"
+            },
+            {
+              "fieldId": "pais",
+              "fieldValue": "={{ $json['País'] }}"
+            },
+            {
+              "fieldId": "asunto",
+              "fieldValue": "={{ $json['Asunto'] }}"
+            },
+            {
+              "fieldId": "cuerpo",
+              "fieldValue": "={{ $json['Descripción'] }}"
+            },
+            {
+              "fieldId": "canal",
+              "fieldValue": "formulario"
+            }
+          ]
+        }
+      },
+      "name": "Guardar ticket",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arma la llamada a OpenAI con el prompt P1. Cambia MODELO si tu clave usa otro.\nconst MODELO = 'gpt-4o-mini';\nconst PROMPT_P1 = \"Eres el analista de triage del equipo de Soporte de una plataforma B2B de validación de identidad, background checks, firma electrónica (ZapSign) y flujos de WhatsApp, con clientes en México, Brasil, Colombia, Chile y Perú. Tu clasificación decide el orden de la cola, el SLA y si el caso va a Ingeniería.\\n\\nTarea: clasifica el ticket. No respondas al cliente. No inventes datos que el ticket no contenga.\\n\\nPASO 1 — ORIGEN DE LA FALLA (a quién le toca resolver)\\n- truora: error de la plataforma o de la API (system_error, respuestas 5xx, eventos o webhooks que no se generan, dashboard caído, comportamiento distinto al documentado).\\n- fuente_externa_gobierno: base del gobierno o fuente de background check no disponible o lenta (government_database_unavailable, Registraduría, RENAPO/CURP, Receita Federal, RENIEC, Registro Civil; checks demorados por la fuente).\\n- meta_whatsapp: decisión o restricción de Meta (línea con calidad baja, limitada o suspendida, plantilla rechazada, límite de conversaciones, verificación del Business Manager).\\n- integracion_cliente: configuración o código del cliente (API key temporal expirada o \\\"unauthorized\\\", URL de webhook mal configurada o endpoint del cliente caído, iframe/WebView, flujo que todavía usa user_phone_number).\\n- usuario_final: captura o comportamiento del usuario final (blurry_image, documento vencido, process_started_late, abandono, cámara, max_retries_reached).\\n- no_aplica: consultas de facturación, capacitación o mejoras sin falla.\\n- indeterminado: no hay evidencia suficiente; lista en datos_faltantes lo que permitiría decidir.\\n\\nPASO 2 — SEVERIDAD (impacto en el cliente, no origen)\\n- P1: producción bloqueada para muchos usuarios finales o canal principal caído: todas o casi todas las validaciones fallan, webhooks no llegan en producción, línea de WhatsApp suspendida, fuente del gobierno caída que detiene el onboarding.\\n- P2: falla parcial en producción: más rechazos o más tiempo de lo normal, flujo degradado, plantilla crítica rechazada, límite de mensajes reducido, revisión manual con más de 20 h.\\n- P3: caso puntual (un usuario o un proceso), consulta de configuración, integración en sandbox, motivo de rechazo por explicar.\\n- P4: pregunta general, facturación, capacitación, solicitud de mejora.\\nReglas:\\n- Ante duda entre dos niveles, elige el más alto y baja la confianza.\\n- Si el ticket menciona producción, usuarios bloqueados, onboarding detenido o dinero perdido: mínimo P2.\\n- Un origen externo NO baja la severidad: para el cliente, una fuente del gobierno caída en producción sigue siendo P1.\\n\\nPASO 3 — RUTA\\n- requiere_escalamiento = true solo si origen_falla es \\\"truora\\\", o si es \\\"indeterminado\\\" con severidad P1 o P2.\\n- accion_sugerida:\\n  - escalar_ingenieria: cuando requiere_escalamiento es true.\\n  - comunicado_proactivo: origen fuente_externa_gobierno con severidad P1 o P2.\\n  - pedir_datos: cuando sin los datos faltantes no se puede responder nada útil.\\n  - responder_con_kb: en los demás casos.\\n- codigo_motivo: el código técnico que aparece en el ticket o que se deduce con alta certeza (ej. blurry_image, government_database_unavailable); null si no hay.\\n\\nDATOS PERSONALES: nunca copies en la salida nombres, números de documento, teléfonos ni correos de usuarios finales. Refiérete a ellos por ID de proceso.\\n\\nDevuelve SOLO JSON válido, sin texto antes ni después:\\n{\\\"producto\\\": \\\"identidad|background_check|firma|whatsapp|cuenta_facturacion|otro\\\",\\n \\\"pais\\\": \\\"MX|BR|CO|CL|PE|otro|desconocido\\\",\\n \\\"ambiente\\\": \\\"produccion|sandbox|desconocido\\\",\\n \\\"tipo\\\": \\\"incidente|consulta|configuracion|facturacion|mejora\\\",\\n \\\"origen_falla\\\": \\\"truora|fuente_externa_gobierno|meta_whatsapp|integracion_cliente|usuario_final|no_aplica|indeterminado\\\",\\n \\\"codigo_motivo\\\": \\\"string o null\\\",\\n \\\"severidad\\\": \\\"P1|P2|P3|P4\\\",\\n \\\"confianza\\\": 0.0-1.0,\\n \\\"justificacion\\\": \\\"máx. 2 frases que citen el texto del ticket\\\",\\n \\\"datos_faltantes\\\": [\\\"lo que hay que pedir al cliente\\\"],\\n \\\"requiere_escalamiento\\\": true|false,\\n \\\"accion_sugerida\\\": \\\"escalar_ingenieria|comunicado_proactivo|responder_con_kb|pedir_datos\\\"}\\n\\nEJEMPLOS\\n\\nTicket: \\\"Desde las 9:10 a. m. todas las validaciones de cédula salen declined con government_database_unavailable. Estamos en producción y hay cientos de usuarios en onboarding.\\\"\\n{\\\"producto\\\":\\\"identidad\\\",\\\"pais\\\":\\\"CO\\\",\\\"ambiente\\\":\\\"produccion\\\",\\\"tipo\\\":\\\"incidente\\\",\\\"origen_falla\\\":\\\"fuente_externa_gobierno\\\",\\\"codigo_motivo\\\":\\\"government_database_unavailable\\\",\\\"severidad\\\":\\\"P1\\\",\\\"confianza\\\":0.9,\\\"justificacion\\\":\\\"Todas las validaciones fallan en producción con 'government_database_unavailable'; la causa es la fuente del gobierno, no la plataforma.\\\",\\\"datos_faltantes\\\":[\\\"2 o 3 IDs de proceso afectados\\\"],\\\"requiere_escalamiento\\\":false,\\\"accion_sugerida\\\":\\\"comunicado_proactivo\\\"}\\n\\nTicket: \\\"Desde a atualização de ontem, o webhook de documento assinado não chega para nenhum documento em produção. Nosso endpoint responde 200 nos testes.\\\"\\n{\\\"producto\\\":\\\"firma\\\",\\\"pais\\\":\\\"BR\\\",\\\"ambiente\\\":\\\"produccion\\\",\\\"tipo\\\":\\\"incidente\\\",\\\"origen_falla\\\":\\\"truora\\\",\\\"codigo_motivo\\\":null,\\\"severidad\\\":\\\"P1\\\",\\\"confianza\\\":0.75,\\\"justificacion\\\":\\\"Ningún webhook de documento firmado llega en producción y el cliente reporta que su endpoint responde 200; apunta a un fallo de envío de la plataforma.\\\",\\\"datos_faltantes\\\":[\\\"IDs de documentos firmados sin webhook\\\",\\\"hora del último webhook recibido\\\",\\\"URL configurada en la regla\\\"],\\\"requiere_escalamiento\\\":true,\\\"accion_sugerida\\\":\\\"escalar_ingenieria\\\"}\\n\\nTicket: \\\"Meta marcó nuestra línea con calidad baja y hoy no salió la campaña de cobranza. Es nuestra línea de producción.\\\"\\n{\\\"producto\\\":\\\"whatsapp\\\",\\\"pais\\\":\\\"MX\\\",\\\"ambiente\\\":\\\"produccion\\\",\\\"tipo\\\":\\\"incidente\\\",\\\"origen_falla\\\":\\\"meta_whatsapp\\\",\\\"codigo_motivo\\\":null,\\\"severidad\\\":\\\"P2\\\",\\\"confianza\\\":0.65,\\\"justificacion\\\":\\\"La calidad baja de la línea, decidida por Meta, frenó la campaña en producción; no se indica suspensión total, por eso P2 y no P1.\\\",\\\"datos_faltantes\\\":[\\\"estado y límite actual de la línea\\\",\\\"nombre de la plantilla de la campaña\\\"],\\\"requiere_escalamiento\\\":false,\\\"accion_sugerida\\\":\\\"responder_con_kb\\\"}\\n\\nTicket: \\\"Nuestros usuarios ven 'unauthorized' cuando abren el link de validación que les mandamos ayer por correo.\\\"\\n{\\\"producto\\\":\\\"identidad\\\",\\\"pais\\\":\\\"desconocido\\\",\\\"ambiente\\\":\\\"desconocido\\\",\\\"tipo\\\":\\\"configuracion\\\",\\\"origen_falla\\\":\\\"integracion_cliente\\\",\\\"codigo_motivo\\\":null,\\\"severidad\\\":\\\"P2\\\",\\\"confianza\\\":0.7,\\\"justificacion\\\":\\\"'unauthorized' en links enviados el día anterior es compatible con una API key temporal expirada; afecta a varios usuarios, por eso mínimo P2.\\\",\\\"datos_faltantes\\\":[\\\"país\\\",\\\"cómo y cuándo generan la API key temporal\\\",\\\"un ID de proceso afectado\\\"],\\\"requiere_escalamiento\\\":false,\\\"accion_sugerida\\\":\\\"responder_con_kb\\\"}\\n\\nTicket: \\\"Un usuario dice que lo rechazaron 3 veces y el motivo dice blurry_image. ¿Lo pueden aprobar?\\\"\\n{\\\"producto\\\":\\\"identidad\\\",\\\"pais\\\":\\\"PE\\\",\\\"ambiente\\\":\\\"produccion\\\",\\\"tipo\\\":\\\"consulta\\\",\\\"origen_falla\\\":\\\"usuario_final\\\",\\\"codigo_motivo\\\":\\\"blurry_image\\\",\\\"severidad\\\":\\\"P3\\\",\\\"confianza\\\":0.85,\\\"justificacion\\\":\\\"Caso de un solo usuario con motivo 'blurry_image': la foto del documento fue ilegible.\\\",\\\"datos_faltantes\\\":[\\\"ID de proceso\\\"],\\\"requiere_escalamiento\\\":false,\\\"accion_sugerida\\\":\\\"responder_con_kb\\\"}\\n\\nTicket: \\\"¿Nos pueden reenviar la factura de septiembre con el RFC actualizado?\\\"\\n{\\\"producto\\\":\\\"cuenta_facturacion\\\",\\\"pais\\\":\\\"MX\\\",\\\"ambiente\\\":\\\"desconocido\\\",\\\"tipo\\\":\\\"facturacion\\\",\\\"origen_falla\\\":\\\"no_aplica\\\",\\\"codigo_motivo\\\":null,\\\"severidad\\\":\\\"P4\\\",\\\"confianza\\\":0.95,\\\"justificacion\\\":\\\"Solicitud administrativa de reenvío de factura, sin falla de servicio.\\\",\\\"datos_faltantes\\\":[\\\"RFC actualizado\\\"],\\\"requiere_escalamiento\\\":false,\\\"accion_sugerida\\\":\\\"responder_con_kb\\\"}\";\nconst t = $('Guardar ticket').first().json;\nreturn [{ json: {\n  inicio: Date.now(),\n  modelo: MODELO,\n  body: {\n    model: MODELO,\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: PROMPT_P1 },\n      { role: 'user', content: `País del cliente (formulario): ${t.pais}\\nTicket: ${t.asunto} — ${t.cuerpo}` }\n    ]\n  }\n}}];"
+      },
+      "name": "Armar llamada P1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "name": "P1 · Clasificar (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valida el JSON de P1 contra el esquema y prepara la fila de `clasificaciones`.\nconst r = $input.first().json;\nconst req = $('Armar llamada P1').first().json;\nconst ticket = $('Guardar ticket').first().json;\nconst ENUM = {\n  severidad: ['P1','P2','P3','P4'],\n  origen_falla: ['truora','fuente_externa_gobierno','meta_whatsapp','integracion_cliente','usuario_final','no_aplica','indeterminado'],\n  accion_sugerida: ['escalar_ingenieria','comunicado_proactivo','responder_con_kb','pedir_datos'],\n};\nlet c = {}, valido = true, error = null;\ntry { c = JSON.parse(r.choices[0].message.content); }\ncatch (e) { valido = false; error = 'JSON inválido: ' + e.message; }\nfor (const [campo, permitidos] of Object.entries(ENUM)) {\n  if (!permitidos.includes(c[campo])) { valido = false; error = (error ? error + '; ' : '') + `${campo} fuera de esquema: ${c[campo]}`; c[campo] = null; }\n}\nconst conf = Number(c.confianza);\nreturn [{ json: {\n  ticket_id: ticket.id,\n  ticket_ref: ticket.ticket_ref,\n  cliente: ticket.cliente,\n  modelo: req.modelo,\n  prompt_version: 'P1-v2',\n  producto: c.producto ?? null,\n  pais: c.pais ?? null,\n  ambiente: c.ambiente ?? null,\n  tipo: c.tipo ?? null,\n  origen_falla: c.origen_falla,\n  codigo_motivo: c.codigo_motivo ?? null,\n  severidad: c.severidad,\n  confianza: Number.isFinite(conf) ? Math.min(Math.max(conf, 0), 1) : null,\n  justificacion: c.justificacion ?? null,\n  datos_faltantes: Array.isArray(c.datos_faltantes) ? c.datos_faltantes : [],\n  requiere_escalamiento: c.requiere_escalamiento === true,\n  accion_sugerida: c.accion_sugerida,\n  json_crudo: c,\n  json_valido: valido,\n  error,\n  latencia_ms: Date.now() - req.inicio,\n  tokens_entrada: r.usage?.prompt_tokens ?? null,\n  tokens_salida: r.usage?.completion_tokens ?? null,\n}}];"
+      },
+      "name": "Validar JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "clasificaciones",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "ticket_id",
+              "fieldValue": "={{ $json.ticket_id }}"
+            },
+            {
+              "fieldId": "modelo",
+              "fieldValue": "={{ $json.modelo }}"
+            },
+            {
+              "fieldId": "prompt_version",
+              "fieldValue": "={{ $json.prompt_version }}"
+            },
+            {
+              "fieldId": "producto",
+              "fieldValue": "={{ $json.producto }}"
+            },
+            {
+              "fieldId": "pais",
+              "fieldValue": "={{ $json.pais }}"
+            },
+            {
+              "fieldId": "ambiente",
+              "fieldValue": "={{ $json.ambiente }}"
+            },
+            {
+              "fieldId": "tipo",
+              "fieldValue": "={{ $json.tipo }}"
+            },
+            {
+              "fieldId": "origen_falla",
+              "fieldValue": "={{ $json.origen_falla }}"
+            },
+            {
+              "fieldId": "codigo_motivo",
+              "fieldValue": "={{ $json.codigo_motivo }}"
+            },
+            {
+              "fieldId": "severidad",
+              "fieldValue": "={{ $json.severidad }}"
+            },
+            {
+              "fieldId": "confianza",
+              "fieldValue": "={{ $json.confianza }}"
+            },
+            {
+              "fieldId": "justificacion",
+              "fieldValue": "={{ $json.justificacion }}"
+            },
+            {
+              "fieldId": "datos_faltantes",
+              "fieldValue": "={{ $json.datos_faltantes }}"
+            },
+            {
+              "fieldId": "requiere_escalamiento",
+              "fieldValue": "={{ $json.requiere_escalamiento }}"
+            },
+            {
+              "fieldId": "accion_sugerida",
+              "fieldValue": "={{ $json.accion_sugerida }}"
+            },
+            {
+              "fieldId": "json_crudo",
+              "fieldValue": "={{ $json.json_crudo }}"
+            },
+            {
+              "fieldId": "json_valido",
+              "fieldValue": "={{ $json.json_valido }}"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $json.error }}"
+            },
+            {
+              "fieldId": "latencia_ms",
+              "fieldValue": "={{ $json.latencia_ms }}"
+            },
+            {
+              "fieldId": "tokens_entrada",
+              "fieldValue": "={{ $json.tokens_entrada }}"
+            },
+            {
+              "fieldId": "tokens_salida",
+              "fieldValue": "={{ $json.tokens_salida }}"
+            }
+          ]
+        }
+      },
+      "name": "Guardar clasificación",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "PEGA_AQUI_TU_CHAT_ID",
+        "text": "={{ ({P1:'🔴',P2:'🟠',P3:'🟡',P4:'⚪'})[$json.severidad] || '❓' }} {{ $json.severidad || 'sin severidad' }} · {{ $json.origen_falla || 'sin origen' }}\nCliente: {{ $('Guardar ticket').first().json.cliente }} ({{ $('Guardar ticket').first().json.pais }})\nAsunto: {{ $('Guardar ticket').first().json.asunto }}\n\nAcción sugerida: {{ $json.accion_sugerida }}{{ $json.requiere_escalamiento ? ' → ESCALAR A INGENIERÍA' : '' }}\nMotivo: {{ $json.codigo_motivo || '—' }} · Confianza: {{ $json.confianza }}\nPor qué: {{ $json.justificacion }}\nPedir al cliente: {{ $json.datos_faltantes.length ? $json.datos_faltantes.join('; ') : 'nada' }}\n{{ $json.json_valido ? '' : '⚠️ Revisar: ' + $json.error }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Avisar en Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        400
+      ],
+      "webhookId": "5d2a9c41-truora-telegram"
+    }
+  ],
+  "connections": {
+    "Formulario de ticket": {
+      "main": [
+        [
+          {
+            "node": "Guardar ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar ticket": {
+      "main": [
+        [
+          {
+            "node": "Armar llamada P1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar llamada P1": {
+      "main": [
+        [
+          {
+            "node": "P1 · Clasificar (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "P1 · Clasificar (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Validar JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar JSON": {
+      "main": [
+        [
+          {
+            "node": "Guardar clasificación",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Avisar en Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
