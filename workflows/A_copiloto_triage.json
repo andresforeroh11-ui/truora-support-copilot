@@ -663,24 +663,24 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "producto",
               "condition": "eq",
+              "keyName": "producto",
               "keyValue": "={{ $('Validar JSON').first().json.producto }}"
             },
             {
-              "keyName": "pais",
               "condition": "eq",
+              "keyName": "pais",
               "keyValue": "={{ $('Validar JSON').first().json.pais }}"
             },
             {
-              "keyName": "estado",
               "condition": "eq",
+              "keyName": "estado",
               "keyValue": "abierto"
             },
             {
-              "keyName": "created_at",
               "condition": "gte",
-              "keyValue": "={{ $now.minus({ minutes: 30 }).toISO() }}"
+              "keyName": "created_at",
+              "keyValue": "={{ $now.minus({ hours: 24 }).toISO() }}"
             }
           ]
         }
@@ -700,7 +700,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Incidente = 3+ tickets del mismo producto y país en 30 min. La firma dice a quién le toca.\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst actual = $('Validar JSON').first().json;\nconst todos = $('Leer clasificaciones recientes').all().map(i => i.json).filter(r => r.id);\nconst abiertos = $('Leer incidentes abiertos').all().map(i => i.json).filter(r => r.id);\n// Una fila por ticket (la clasificación más reciente)\nconst porTicket = {};\nfor (const r of todos) if (!porTicket[r.ticket_id] || r.created_at > porTicket[r.ticket_id].created_at) porTicket[r.ticket_id] = r;\nconst rec = Object.values(porTicket);\nif (rec.length < 3 || abiertos.length) return [];\nconst n = (o) => rec.filter(r => r.origen_falla === o).length;\nlet firma = null;\nif (n('fuente_externa_gobierno') >= rec.length / 2) firma = 'fuente_externa';\nelse if (n('truora') + n('indeterminado') >= rec.length / 2) firma = 'plataforma';\nif (!firma) return [];\nconst conteo = {};\nfor (const r of rec) if (r.codigo_motivo) conteo[r.codigo_motivo] = (conteo[r.codigo_motivo] || 0) + 1;\nconst codigo = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a])[0] || null;\nconst casos = rec.map(r => Number(r.numero_caso)).filter(Boolean).sort((a, b) => a - b);\nconst inicio = rec.map(r => r.ticket_created_at || r.created_at).sort()[0];\nconst base = rec.length + ' tickets de ' + actual.producto + ' en ' + actual.pais + ' en los últimos 30 min.' +\n  '\\n📌 <b>Casos:</b> ' + casos.map(x => '#' + x).join(', ') +\n  '\\n🕒 <b>Ocurre desde:</b> ' + hora(inicio) + ' (primer ticket, hora Bogotá)' +\n  '\\nDetectado: ' + hora($now.toISO());\nconst mensaje = firma === 'fuente_externa'\n  ? '🚨 <b>Posible incidente: FUENTE EXTERNA</b>\\n' + base + (codigo ? '\\nCódigo común: ' + codigo : '') +\n    '\\n<b>Acción:</b> confirmar en status.truora.com, enviar comunicado proactivo a los clientes del país y no escalar a Ingeniería.'\n  : '🚨 <b>Posible incidente de PLATAFORMA</b>\\n' + base +\n    '\\n<b>Acción:</b> abrir incidente con Ingeniería (adjuntar fichas P3) y comunicar a los clientes afectados.';\nreturn [{ json: { producto: actual.producto, pais: actual.pais, firma, codigo_motivo: codigo, ticket_ids: rec.map(r => r.ticket_id), casos, inicio_at: inicio, mensaje_alerta: mensaje + '\\n💬 Pregunta por cualquiera: <code>caso ' + casos[0] + '</code> y tu pregunta.' } }];"
+        "jsCode": "// Incidente = 3+ tickets del mismo producto y país en 30 min. La firma dice a quién le toca.\n// Si ya hay un incidente ABIERTO del mismo producto y país (últimas 24 h) y el ticket encaja con su firma,\n// el ticket se SUMA a ese incidente: no se crea otro ni se repite la alerta.\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst actual = $('Validar JSON').first().json;\nconst ticket = $('Guardar ticket').first().json;\nconst todos = $('Leer clasificaciones recientes').all().map(i => i.json).filter(r => r.id);\nconst abiertos = $('Leer incidentes abiertos').all().map(i => i.json).filter(r => r.id);\nconst firmaDe = (origen) => origen === 'fuente_externa_gobierno' ? 'fuente_externa' : (['truora', 'indeterminado'].includes(origen) ? 'plataforma' : null);\n\n// 1) ¿Ya existe un incidente abierto al que pertenece este ticket?\nconst miFirma = firmaDe(actual.origen_falla);\nconst existente = abiertos.filter(i => i.firma === miFirma).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];\nif (existente) {\n  const ids = Array.isArray(existente.ticket_ids) ? existente.ticket_ids : [];\n  if (ids.includes(ticket.id)) return [];\n  const casos = [...new Set([...(existente.casos || []).map(Number), Number(ticket.numero_caso)])].filter(Boolean).sort((a, b) => a - b);\n  return [{ json: { accion: 'agregar', id: existente.id, ticket_ids: [...ids, ticket.id], casos } }];\n}\nif (abiertos.length) return [];\n\n// 2) No hay incidente abierto: ¿este ticket completa uno nuevo?\nconst porTicket = {};\nfor (const r of todos) if (!porTicket[r.ticket_id] || r.created_at > porTicket[r.ticket_id].created_at) porTicket[r.ticket_id] = r;\nconst rec = Object.values(porTicket);\nif (rec.length < 3) return [];\nconst n = (o) => rec.filter(r => r.origen_falla === o).length;\nlet firma = null;\nif (n('fuente_externa_gobierno') >= rec.length / 2) firma = 'fuente_externa';\nelse if (n('truora') + n('indeterminado') >= rec.length / 2) firma = 'plataforma';\nif (!firma) return [];\nconst conteo = {};\nfor (const r of rec) if (r.codigo_motivo) conteo[r.codigo_motivo] = (conteo[r.codigo_motivo] || 0) + 1;\nconst codigo = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a])[0] || null;\nconst casos = rec.map(r => Number(r.numero_caso)).filter(Boolean).sort((a, b) => a - b);\nconst inicio = rec.map(r => r.ticket_created_at || r.created_at).sort()[0];\nconst base = rec.length + ' tickets de ' + actual.producto + ' en ' + actual.pais + ' en los últimos 30 min.' +\n  '\\n📌 <b>Casos:</b> ' + casos.map(x => '#' + x).join(', ') +\n  '\\n🕒 <b>Ocurre desde:</b> ' + hora(inicio) + ' (primer ticket, hora Bogotá)' +\n  '\\nDetectado: ' + hora($now.toISO());\nconst mensaje = firma === 'fuente_externa'\n  ? '🚨 <b>Posible incidente: FUENTE EXTERNA</b>\\n' + base + (codigo ? '\\nCódigo común: ' + codigo : '') +\n    '\\n<b>Acción:</b> confirmar en status.truora.com, enviar comunicado proactivo a los clientes del país y no escalar a Ingeniería.'\n  : '🚨 <b>Posible incidente de PLATAFORMA</b>\\n' + base +\n    '\\n<b>Acción:</b> abrir incidente con Ingeniería (adjuntar fichas P3) y comunicar a los clientes afectados.';\nreturn [{ json: { accion: 'crear', producto: actual.producto, pais: actual.pais, firma, codigo_motivo: codigo, ticket_ids: rec.map(r => r.ticket_id), casos, inicio_at: inicio, mensaje_alerta: mensaje + '\\n💬 Pregunta por cualquiera: <code>caso ' + casos[0] + '</code> y tu pregunta.' } }];"
       }
     },
     {
@@ -709,8 +709,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1920,
-        384
+        2144,
+        352
       ],
       "parameters": {
         "resource": "row",
@@ -765,8 +765,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2144,
-        384
+        2368,
+        352
       ],
       "parameters": {
         "resource": "message",
@@ -889,6 +889,76 @@
       },
       "onError": "continueRegularOutput",
       "webhookId": "155731df-0db2-428e-aef2-527e279fd337"
+    },
+    {
+      "id": "2c42990f-dce9-462c-b139-2c940393ddbe",
+      "name": "¿Incidente nuevo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        384
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.accion }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "crear"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          }
+        }
+      }
+    },
+    {
+      "id": "0acb2ee7-35da-4205-80d7-c5f6bf8e9a26",
+      "name": "Sumar al incidente abierto",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2144,
+        528
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "ticket_ids",
+              "fieldValue": "={{ $json.ticket_ids }}"
+            },
+            {
+              "fieldId": "casos",
+              "fieldValue": "={{ $json.casos }}"
+            }
+          ]
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "id",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "matchType": "allFilters",
+        "operation": "update",
+        "resource": "row",
+        "tableId": "incidentes"
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -1102,17 +1172,6 @@
         ]
       ]
     },
-    "Evaluar incidente": {
-      "main": [
-        [
-          {
-            "node": "Guardar incidente",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Guardar incidente": {
       "main": [
         [
@@ -1152,10 +1211,38 @@
           }
         ]
       ]
+    },
+    "Evaluar incidente": {
+      "main": [
+        [
+          {
+            "node": "¿Incidente nuevo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Incidente nuevo?": {
+      "main": [
+        [
+          {
+            "node": "Guardar incidente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sumar al incidente abierto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
-    "executionOrder": "v1",
-    "timezone": "America/Bogota"
+    "executionOrder": "v1"
   }
 }

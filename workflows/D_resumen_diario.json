@@ -169,13 +169,13 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1392,
-        224
+        1840,
+        0
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst texto = $('P4 · Resumen del líder').first().json.choices[0].message.content;\nconst m = $('Armar llamada P4').first().json.metricas || {};\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet cuerpo = esc(texto);\nfor (const t of titulos) cuerpo = cuerpo.split(t).join('<b>' + t + '</b>');\n// Detalle fijo desde SQL: números de caso y desde cuándo ocurre (no lo escribe la IA)\nconst lista = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst casos = (arr) => (arr || []).map(x => '#' + x).join(', ');\nconst det = [];\nconst ejemplos = [];\nfor (const i of lista(m.incidentes)) {\n  ejemplos.push(...(i.casos || []));\n  det.push('🚨 ' + esc(i.firma === 'fuente_externa' ? 'Fuente externa' : 'Plataforma') + ' · ' + esc(i.producto) + ' ' + esc(i.pais) +\n    ' · casos ' + esc(casos(i.casos)) + ' · desde ' + esc(i.desde) + ' (' + esc(i.estado) + ')');\n}\nfor (const s of lista(m.sla_en_riesgo)) {\n  ejemplos.push(s.caso);\n  det.push('⏱ #' + esc(s.caso) + ' ' + esc(s.severidad) + ' · ' + esc(s.cliente) + ' · desde ' + esc(s.desde) +\n    ' · ' + esc(s.minutos_abierto) + ' de ' + esc(s.limite_min) + ' min');\n}\nfor (const p of lista(m.patrones)) {\n  ejemplos.push(...(p.casos || []));\n  det.push('🔁 ' + esc(p.patron) + ' · casos ' + esc(casos(p.casos)));\n}\nconst detalle = det.length ? '\\n\\n<b>Casos a revisar</b>\\n' + det.slice(0, 15).join('\\n') +\n  (ejemplos.length ? '\\n\\n💬 Pregunta por uno: <code>caso ' + esc(ejemplos[0]) + '</code> y tu pregunta.' : '') : '';\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nreturn [{ json: { mensaje: '☀️ <b>Resumen de soporte · ' + fecha + '</b>\\n\\n' + cuerpo + detalle } }];"
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst texto = $('P4 · Resumen del líder').first().json.choices[0].message.content;\nconst m = $('Armar llamada P4').first().json.metricas || {};\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet cuerpo = esc(texto);\nfor (const t of titulos) cuerpo = cuerpo.split(t).join('<b>' + t + '</b>');\n// Detalle fijo desde SQL: números de caso, desde cuándo ocurre y destino de cada patrón (no lo escribe la IA)\nconst lista = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst casos = (arr) => (arr || []).map(x => '#' + x).join(', ');\n\n// Gestión de casos (24 h): calculada en SQL (v_graficas_diarias.gestion_24h), no por la IA\nconst ge = $('Armar gráficas').first().json.gestion || {};\nconst cs = ge.casos || {};\nconst linea = (icono, nombre, k) => (ge[k] || 0) > 0 ? '\\n   ' + icono + ' ' + nombre + ': ' + ge[k] + ' · ' + esc(casos(cs[k])) : '';\nconst kb = (ge.kb_resuelto || 0) + (ge.kb_por_aprobar || 0);\nconst interno = (ge.interno_ingenieria || 0) + (ge.interno_datos || 0) + (ge.interno_manual || 0);\nconst gestion = (ge.total || 0) === 0 ? '' :\n  '\\n\\n<b>Gestión de casos (24 h)</b>' +\n  '\\n🤖 Con base de conocimiento: ' + kb + ' de ' + ge.total + ' (' + (ge.pct_kb ?? 0) + '%)' +\n  linea('✅', 'Resueltos (borrador IA aprobado)', 'kb_resuelto') +\n  linea('🕓', 'Borrador listo, por aprobar', 'kb_por_aprobar') +\n  '\\n🛠 En gestión interna: ' + interno +\n  linea('🔧', 'Escalados a Ingeniería', 'interno_ingenieria') +\n  linea('⏳', 'Esperando datos del cliente', 'interno_datos') +\n  linea('✍️', 'Borrador rechazado (manual)', 'interno_manual');\n\nconst det = [];\nconst ejemplos = [];\n// Un renglón por incidente (SQL ya agrupa las oleadas del mismo problema)\nfor (const i of lista(m.incidentes)) {\n  ejemplos.push(...(i.casos || []));\n  const oleadas = Number(i.oleadas || 1) > 1 ? ' · llegó en ' + i.oleadas + ' oleadas' : '';\n  det.push('🚨 <b>' + esc(i.firma === 'fuente_externa' ? 'Fuente externa' : 'Plataforma') + '</b> · ' + esc(i.producto) + ' ' + esc(i.pais) +\n    (i.codigo ? ' · ' + esc(i.codigo) : '') + ' · ' + esc(i.tickets) + ' casos (' + esc(casos(i.casos)) + ')' +\n    ' · desde ' + esc(i.desde) + oleadas + ' (' + esc(i.estado) + ')');\n}\nfor (const s of lista(m.sla_en_riesgo)) {\n  ejemplos.push(s.caso);\n  det.push('⏱ #' + esc(s.caso) + ' ' + esc(s.severidad) + ' · ' + esc(s.cliente) + ' · desde ' + esc(s.desde) +\n    ' · ' + esc(s.minutos_abierto) + ' de ' + esc(s.limite_min) + ' min');\n}\nfor (const p of lista(m.patrones)) {\n  ejemplos.push(...(p.casos || []));\n  det.push('🔁 ' + esc(p.patron) + ' · casos ' + esc(casos(p.casos)) + ' → <b>' + esc(p.destino || 'sin destino') + '</b>');\n}\nconst detalle = det.length ? '\\n\\n<b>Casos a revisar</b>\\n' + det.slice(0, 15).join('\\n') +\n  (ejemplos.length ? '\\n\\n💬 Pregunta por uno: <code>caso ' + esc(ejemplos[0]) + '</code> y tu pregunta.' : '') : '';\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nreturn [{ json: { mensaje: '☀️ <b>Resumen de soporte · ' + fecha + '</b>\\n\\n' + cuerpo + gestion + detalle } }];"
       }
     },
     {
@@ -184,8 +184,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        752,
-        96
+        2064,
+        0
       ],
       "parameters": {
         "resource": "message",
@@ -209,7 +209,7 @@
         -96
       ],
       "parameters": {
-        "content": "## Resumen diario del líder (P4)\nLa vista SQL v_resumen_diario calcula tickets, SLA en riesgo, incidentes, patrones, calidad de borradores y costo. P4 solo interpreta y sugiere destino para cada patrón.\nSe envía a Telegram y por correo al líder (tabla destinatarios_correo); cada envío queda en correos_enviados.",
+        "content": "## Resumen diario del líder (P4)\nLa vista SQL v_resumen_diario calcula tickets, SLA en riesgo, incidentes, patrones (con su destino por regla fija), calidad de borradores y costo. P4 solo redacta: no elige destinos ni calcula cifras.\nGráficas y gestión (KB vs interna): v_graficas_diarias (solo conteos) → QuickChart → álbum en Telegram e imágenes en el correo.\nSe envía a Telegram y por correo al líder (tabla destinatarios_correo); cada envío queda en correos_enviados.",
         "color": 4,
         "width": 432,
         "height": 448
@@ -243,7 +243,7 @@
         400
       ],
       "parameters": {
-        "jsCode": "// El mismo resumen de Telegram, en HTML para correo.\nconst dest = Object.fromEntries($('Leer destinatarios').all().map(i => [i.json.rol, i.json.correo]));\nconst msg = $('Componer resumen').first().json.mensaje;\nconst fecha = $now.setZone('America/Bogota').setLocale('es').toFormat('ccc d LLL yyyy');\nconst html = '<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:680px;line-height:1.5\">' +\n  msg.replace(/<code>/g, '<code style=\"background:#f2f2f2;padding:1px 4px;border-radius:3px\">').replace(/\\n/g, '<br>') +\n  '<hr style=\"border:none;border-top:1px solid #ddd\"><p style=\"color:#888;font-size:12px\">Cifras calculadas en SQL (v_resumen_diario); la IA solo las redacta. DEMO: datos sintéticos.</p></div>';\nreturn [{ json: { para: dest.lider, asunto: 'Resumen de soporte · ' + fecha, html } }];",
+        "jsCode": "// El mismo resumen de Telegram, en HTML para correo, con la paleta pública de Truora (sin logo) y las 4 gráficas.\nconst dest = Object.fromEntries($('Leer destinatarios').all().map(i => [i.json.rol, i.json.correo]));\nconst msg = $('Componer resumen').first().json.mensaje;\nconst gr = $('Armar gráficas').first().json;\nconst fecha = $now.setZone('America/Bogota').setLocale('es').toFormat(\"cccc d 'de' LLLL yyyy\");\nconst hora = $now.setZone('America/Bogota').toFormat('HH:mm');\n// Cuerpo: se quita la primera línea (el título va en el encabezado) y se aplica estilo\nconst cuerpo = msg.replace(/^[^\\n]*\\n\\n/, '')\n  .replace(/<code>/g, '<code style=\"background:#F2EEFF;color:#3C1AE9;padding:1px 6px;border-radius:4px\">')\n  .replace(/\\n/g, '<br>');\nconst imgs = (gr.urls || []).map((u, i) =>\n  '<div style=\"margin:0 0 18px\"><div style=\"font-size:13px;font-weight:bold;color:#01022E;margin:0 0 6px\">' + gr.titulos[i] + '</div>' +\n  '<img src=\"' + u.replace(/&/g, '&amp;') + '\" alt=\"' + gr.titulos[i] + '\" width=\"632\" style=\"display:block;width:100%;max-width:632px;height:auto;border:1px solid #E8EBF3;border-radius:6px\"></div>').join('');\nconst html =\n  '<div style=\"background:#F5F6FB;padding:24px 12px;font-family:Arial,Helvetica,sans-serif\">' +\n  '<div style=\"max-width:680px;margin:0 auto;background:#FFFFFF;border:1px solid #E8EBF3;border-radius:10px;overflow:hidden\">' +\n  '<div style=\"background:#01022E;padding:22px 24px\">' +\n    '<div style=\"font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#9BD2F3\">Soporte · Resumen diario del líder</div>' +\n    '<div style=\"font-size:22px;font-weight:bold;color:#FFFFFF;margin-top:6px\">' + fecha + '</div>' +\n    '<div style=\"font-size:13px;color:#CBD5E1;margin-top:2px\">Corte ' + hora + ' (hora Bogotá) · últimas 24 h · ' + (gr.tickets_24h ?? 0) + ' tickets</div>' +\n  '</div>' +\n  '<div style=\"height:4px;background:#EE792F\"></div>' +\n  '<div style=\"padding:22px 24px;font-size:14px;line-height:1.6;color:#01022E\">' + cuerpo + '</div>' +\n  '<div style=\"padding:0 24px 8px\"><div style=\"font-size:16px;font-weight:bold;color:#3C1AE9;border-top:1px solid #E8EBF3;padding-top:18px;margin-bottom:14px\">📊 Gráficas</div>' + imgs + '</div>' +\n  '<div style=\"background:#F9FAFE;border-top:1px solid #E8EBF3;padding:14px 24px;font-size:12px;color:#64748B;line-height:1.5\">' +\n    'Cifras calculadas en SQL (v_resumen_diario y v_graficas_diarias); la IA solo las redacta. Gráficas generadas con QuickChart a partir de conteos agregados, sin datos de tickets. DEMO: datos sintéticos.' +\n  '</div></div></div>';\nreturn [{ json: { para: dest.lider, asunto: 'Resumen de soporte · ' + $now.setZone('America/Bogota').setLocale('es').toFormat('ccc d LLL yyyy'), html } }];",
         "language": "javaScript",
         "mode": "runOnceForAllItems"
       }
@@ -323,6 +323,85 @@
         "resource": "row",
         "tableId": "correos_enviados"
       }
+    },
+    {
+      "id": "186ced36-6b09-44d2-ba3c-96839e11a657",
+      "name": "Leer datos de gráficas",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        0
+      ],
+      "parameters": {
+        "filterType": "none",
+        "limit": 1,
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": false,
+        "tableId": "v_graficas_diarias"
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "id": "03d08aec-c38b-4cc3-bc90-86b6dfceffc0",
+      "name": "Armar gráficas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Gráficas a partir de conteos agregados en SQL (v_graficas_diarias). No viaja texto de tickets ni datos personales.\n// Paleta tomada del sitio público de Truora (sin logos). Chart.js v2 en QuickChart; la config va como JS para usar funciones.\n// URLs completas: no vencen (las cortas gratuitas vencen a los 3 días).\nconst g = $('Leer datos de gráficas').first().json || {};\nconst arr = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst obj = (v) => (v && typeof v === 'object') ? v : (typeof v === 'string' ? JSON.parse(v || '{}') : {});\nconst J = JSON.stringify;\nconst C = { morado: '#3C1AE9', naranja: '#EE792F', marino: '#01022E', celeste: '#9BD2F3', moradoClaro: '#A99BF5', naranjaClaro: '#F6B98F', gris: '#CBD5E1' };\nconst CLAROS = [C.celeste, C.moradoClaro, C.naranjaClaro, C.gris];\nconst GRID = '#E8EBF3', TICK = '#475569';\nconst url = (cfg) => 'https://quickchart.io/chart?w=900&h=500&bkg=white&f=png&c=' + encodeURIComponent(cfg);\n\n// Piezas comunes (texto JS, no JSON, para poder pasar funciones a datalabels)\nconst DL_SHOW = 'function(c){return c.dataset.data[c.dataIndex]>0}';\nconst DL_COLOR = 'function(c){var b=c.dataset.backgroundColor;b=Array.isArray(b)?b[c.dataIndex]:b;return ' + J(CLAROS) + '.indexOf(b)>=0?\"' + C.marino + '\":\"#FFFFFF\"}';\nconst titulo = (t) => 'title:{display:true,text:' + J(t) + ',fontSize:20,fontStyle:\"bold\",fontColor:\"' + C.marino + '\",padding:20}';\nconst leyenda = (pos) => 'legend:{position:\"' + pos + '\",labels:{fontColor:\"#334155\",fontSize:14,boxWidth:14,padding:18}}';\nconst eje = (stacked, grid) => '{stacked:' + stacked + ',gridLines:{display:' + grid + ',color:\"' + GRID + '\",zeroLineColor:\"' + GRID + '\",drawBorder:false},ticks:{beginAtZero:true,precision:0,fontColor:\"' + TICK + '\",fontSize:14,padding:6}}';\nconst etiquetasBarras = 'datalabels:{display:' + DL_SHOW + ',color:' + DL_COLOR + ',font:{weight:\"bold\",size:15}}';\n\n// 0) Gestión de casos: base de conocimiento vs interna (dona con número y porcentaje)\nconst ge = obj(g.gestion_24h);\nconst total = Number(ge.total || 0);\nconst pct = (n) => total ? Math.round(100 * n / total) : 0;\nconst cats = [\n  ['kb_resuelto', 'KB · resuelto', C.morado],\n  ['kb_por_aprobar', 'KB · por aprobar', C.moradoClaro],\n  ['interno_ingenieria', 'Interno · Ingeniería', C.naranja],\n  ['interno_datos', 'Interno · esperando datos', C.naranjaClaro],\n  ['interno_manual', 'Interno · manual', C.marino]\n].filter(([k]) => Number(ge[k] || 0) > 0);\nconst v0 = cats.length ? cats.map(c => Number(ge[c[0]])) : [1];\nconst c0 = '{type:\"doughnut\",data:{labels:' + J(cats.length ? cats.map(c => c[1] + ': ' + ge[c[0]] + ' (' + pct(ge[c[0]]) + '%)') : ['Sin casos']) +\n  ',datasets:[{data:' + J(v0) + ',backgroundColor:' + J(cats.length ? cats.map(c => c[2]) : [C.gris]) + ',borderColor:\"#FFFFFF\",borderWidth:4}]},' +\n  'options:{cutoutPercentage:58,layout:{padding:{left:10,right:10,top:0,bottom:10}},' +\n  titulo('Gestión de casos · 24 h · ' + (ge.pct_kb ?? 0) + '% con base de conocimiento') + ',' + leyenda('right') + ',' +\n  'plugins:{datalabels:{display:' + DL_SHOW + ',color:' + DL_COLOR + ',font:{weight:\"bold\",size:16},textAlign:\"center\",' +\n  'formatter:function(v,c){var t=c.dataset.data.reduce(function(a,b){return a+b},0);return [v,Math.round(100*v/t)+\"%\"]}},' +\n  'doughnutlabel:{labels:[{text:\"' + total + '\",font:{size:40,weight:\"bold\"},color:\"' + C.marino + '\"},{text:\"casos\",font:{size:15},color:\"#64748B\"}]}}}}';\n\n// 1) Origen de la falla x severidad (barras horizontales apiladas)\nconst nombres = { truora: 'Truora (plataforma)', fuente_externa_gobierno: 'Fuente gobierno', meta_whatsapp: 'Meta / WhatsApp', integracion_cliente: 'Integración cliente', usuario_final: 'Usuario final', no_aplica: 'No aplica', indeterminado: 'Indeterminado', sin_clasificar: 'Sin clasificar' };\nconst colSev = { P1: C.naranja, P2: C.morado, P3: C.celeste, P4: C.gris };\nconst os = arr(g.origen_severidad);\nconst tot = (x) => ['P1', 'P2', 'P3', 'P4'].reduce((s, k) => s + Number(x[k] || 0), 0);\nconst sev1 = ['P1', 'P2', 'P3', 'P4'].filter(s => os.some(x => Number(x[s] || 0) > 0));\nconst c1 = '{type:\"horizontalBar\",data:{labels:' + J(os.length ? os.map(x => (nombres[x.origen] || x.origen) + ' (' + tot(x) + ')') : ['Sin tickets']) +\n  ',datasets:' + J(sev1.map(s => ({ label: s, backgroundColor: colSev[s], maxBarThickness: 56, data: os.map(x => Number(x[s] || 0)) }))) + '},' +\n  'options:{' + titulo('Tickets 24 h por origen de la falla y severidad') + ',' + leyenda('bottom') + ',layout:{padding:{right:20}},' +\n  'scales:{xAxes:[' + eje(true, true) + '],yAxes:[' + eje(true, false) + ']},plugins:{' + etiquetasBarras + '}}}';\n\n// 2) SLA por severidad (barras verticales apiladas)\nconst sl = arr(g.sla_por_severidad);\nconst est = [['en_plazo', 'En plazo', C.morado], ['en_riesgo', 'En riesgo (>80%)', C.naranjaClaro], ['vencido', 'Vencido', C.naranja]];\nconst c2 = '{type:\"bar\",data:{labels:' + J(sl.length ? sl.map(x => x.severidad) : ['Sin tickets']) +\n  ',datasets:' + J(est.map(([k, l, col]) => ({ label: l, backgroundColor: col, maxBarThickness: 90, data: sl.map(x => Number(x[k] || 0)) }))) + '},' +\n  'options:{' + titulo('SLA por severidad · últimas 24 h') + ',' + leyenda('bottom') + ',' +\n  'scales:{xAxes:[' + eje(true, false) + '],yAxes:[' + eje(true, true) + ']},plugins:{' + etiquetasBarras + '}}}';\n\n// 3) Tendencia 7 días: total vs escalados a Ingeniería (línea con valores)\nconst td = arr(g.tendencia_7d);\nconst maxY = Math.max(1, ...td.map(x => Number(x.total || 0)));\nconst c3 = '{type:\"line\",data:{labels:' + J(td.map(x => x.dia)) + ',datasets:' + J([\n  { label: 'Tickets', borderColor: C.morado, backgroundColor: 'rgba(60,26,233,0.10)', fill: true, borderWidth: 3, pointRadius: 5, pointBackgroundColor: C.morado, cubicInterpolationMode: 'monotone', data: td.map(x => Number(x.total || 0)) },\n  { label: 'Escalados a Ingeniería', borderColor: C.naranja, backgroundColor: C.naranja, fill: false, borderWidth: 3, pointRadius: 5, pointBackgroundColor: C.naranja, cubicInterpolationMode: 'monotone', data: td.map(x => Number(x.escalados || 0)) }\n]) + '},options:{' + titulo('Tickets por día · últimos 7 días') + ',' + leyenda('bottom') + ',' +\n  'scales:{xAxes:[' + eje(false, false) + '],yAxes:[{gridLines:{color:\"' + GRID + '\",zeroLineColor:\"' + GRID + '\",drawBorder:false},ticks:{beginAtZero:true,precision:0,suggestedMax:' + Math.ceil(maxY * 1.25) + ',fontColor:\"' + TICK + '\",fontSize:14}}]},' +\n  'plugins:{datalabels:{display:' + DL_SHOW + ',align:\"top\",anchor:\"end\",offset:4,color:function(c){return c.dataset.borderColor},font:{weight:\"bold\",size:15}}}}}';\n\nconst titulos = ['Gestión de casos: base de conocimiento vs interna (24 h)', 'Origen de la falla y severidad (24 h)', 'SLA por severidad (24 h)', 'Tendencia 7 días'];\nreturn [{ json: { tickets_24h: g.tickets_24h ?? 0, gestion: ge, titulos, urls: [url(c0), url(c1), url(c2), url(c3)] } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "197dd14b-0ca2-4fbe-b52c-4a443dfb7752",
+      "name": "Enviar gráficas",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2288,
+        0
+      ],
+      "parameters": {
+        "chatId": "TU_CHAT_ID",
+        "media": {
+          "media": [
+            {
+              "additionalFields": {
+                "caption": "={{ '📊 <b>Gráficas del resumen</b> · ' + $('Armar gráficas').first().json.tickets_24h + ' tickets en 24 h\\nCifras calculadas en SQL; la IA no las toca.' }}",
+                "parse_mode": "HTML"
+              },
+              "media": "={{ $('Armar gráficas').first().json.urls[0] }}",
+              "type": "photo"
+            },
+            {
+              "media": "={{ $('Armar gráficas').first().json.urls[1] }}",
+              "type": "photo"
+            },
+            {
+              "media": "={{ $('Armar gráficas').first().json.urls[2] }}",
+              "type": "photo"
+            },
+            {
+              "media": "={{ $('Armar gráficas').first().json.urls[3] }}",
+              "type": "photo"
+            }
+          ]
+        },
+        "operation": "sendMediaGroup",
+        "resource": "message"
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "webhookId": "17962ecd-ac27-4aa3-a9d1-69292841e2fb"
     }
   ],
   "connections": {
@@ -392,33 +471,11 @@
         ]
       ]
     },
-    "Guardar resumen": {
-      "main": [
-        [
-          {
-            "node": "Componer resumen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Componer resumen": {
       "main": [
         [
           {
             "node": "Enviar resumen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Enviar resumen": {
-      "main": [
-        [
-          {
-            "node": "Leer destinatarios",
             "type": "main",
             "index": 0
           }
@@ -457,10 +514,64 @@
           }
         ]
       ]
+    },
+    "Leer datos de gráficas": {
+      "main": [
+        [
+          {
+            "node": "Armar gráficas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar gráficas": {
+      "main": [
+        [
+          {
+            "node": "Leer destinatarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar resumen": {
+      "main": [
+        [
+          {
+            "node": "Leer datos de gráficas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar gráficas": {
+      "main": [
+        [
+          {
+            "node": "Componer resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar resumen": {
+      "main": [
+        [
+          {
+            "node": "Enviar gráficas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
-    "executionOrder": "v1",
-    "timezone": "America/Bogota"
+    "executionOrder": "v1"
   }
 }

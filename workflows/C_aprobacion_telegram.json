@@ -33,7 +33,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Interpreta el botón (ap/ed/re/es), la respuesta con el texto editado o una pregunta sobre un caso.\nconst u = $input.first().json;\nif (u.callback_query) {\n  const cq = u.callback_query;\n  const [pref, id] = String(cq.data || '').split(':');\n  const mapa = { ap: 'aprobar', ed: 'editar', re: 'rechazar', es: 'escalar' };\n  const accion = mapa[pref] || 'ignorar';\n  return [{ json: { accion, respuesta_id: accion === 'escalar' ? null : id, escalamiento_id: accion === 'escalar' ? id : null, query_id: cq.id, chat_id: cq.message.chat.id } }];\n}\nconst m = u.message;\nif (!m || !m.text) return [];\nconst previo = String((m.reply_to_message && m.reply_to_message.text) || '');\nconst ref = previo.match(/ID: ([0-9a-f-]{36})/);\nif (ref) {\n  return [{ json: { accion: 'guardar_edicion', respuesta_id: ref[1], texto: m.text, query_id: null, chat_id: m.chat.id } }];\n}\n// Consulta: \"caso 1050 ...\", \"#1050 ...\", \"1050 ...\", \"T11 ...\" o respondiendo a un mensaje que trae \"Caso #1050\"\nconst txt = m.text.trim();\nconst num = txt.match(/(?:caso|#)\\s*#?\\s*(\\d{3,7})/i) || txt.match(/^(\\d{3,7})\\b/) || previo.match(/Caso #(\\d{3,7})/);\nconst tref = txt.match(/\\b(T\\d{2})\\b/i);\nconst base = { pregunta: txt, chat_id: m.chat.id, query_id: null };\nif (num) return [{ json: { ...base, accion: 'consultar', campo: 'numero_caso', valor: num[1] } }];\nif (tref) return [{ json: { ...base, accion: 'consultar', campo: 'ticket_ref', valor: tref[1].toUpperCase() } }];\nreturn [{ json: { ...base, accion: 'ayuda' } }];"
+        "jsCode": "// Interpreta el botón (ap/ed/re/es/ok), la respuesta con el texto editado o una pregunta sobre un caso.\nconst u = $input.first().json;\nif (u.callback_query) {\n  const cq = u.callback_query;\n  const [pref, id] = String(cq.data || '').split(':');\n  const mapa = { ap: 'aprobar', ed: 'editar', re: 'rechazar', es: 'escalar', ok: 'enviar_editado' };\n  const accion = mapa[pref] || 'ignorar';\n  return [{ json: { accion, respuesta_id: accion === 'escalar' ? null : id, escalamiento_id: accion === 'escalar' ? id : null, query_id: cq.id, chat_id: cq.message.chat.id } }];\n}\nconst m = u.message;\nif (!m || !m.text) return [];\nconst previo = String((m.reply_to_message && m.reply_to_message.text) || '');\nconst ref = previo.match(/ID: ([0-9a-f-]{36})/);\nif (ref) {\n  return [{ json: { accion: 'guardar_edicion', respuesta_id: ref[1], texto: m.text, query_id: null, chat_id: m.chat.id } }];\n}\n// Consulta: \"caso 1050 ...\", \"#1050 ...\", \"1050 ...\", \"T11 ...\" o respondiendo a un mensaje que trae \"Caso #1050\"\nconst txt = m.text.trim();\nconst num = txt.match(/(?:caso|#)\\s*#?\\s*(\\d{3,7})/i) || txt.match(/^(\\d{3,7})\\b/) || previo.match(/Caso #(\\d{3,7})/);\nconst tref = txt.match(/\\b(T\\d{2})\\b/i);\nconst base = { pregunta: txt, chat_id: m.chat.id, query_id: null };\nif (num) return [{ json: { ...base, accion: 'consultar', campo: 'numero_caso', valor: num[1] } }];\nif (tref) return [{ json: { ...base, accion: 'consultar', campo: 'ticket_ref', valor: tref[1].toUpperCase() } }];\nreturn [{ json: { ...base, accion: 'ayuda' } }];"
       }
     },
     {
@@ -229,6 +229,28 @@
               },
               "outputKey": "escalar",
               "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "enviar_editado"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "enviar_editado",
+              "renameOutput": true
             }
           ]
         },
@@ -409,14 +431,14 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1120,
+        1344,
         384
       ],
       "parameters": {
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
-        "text": "=✏️ Responde a ESTE mensaje con el texto corregido.\nID: {{ $('Interpretar acción').first().json.respuesta_id }}",
+        "text": "=✏️ <b>Editar {{ $json.respuesta_tipo === 'comunicado' ? 'comunicado' : 'respuesta' }} · Caso #{{ $json.numero_caso }}</b>\nToca el texto de abajo para copiarlo, corrígelo y <b>responde a ESTE mensaje</b> con la versión final.\nNo se envía nada al cliente hasta que confirmes con el botón «Enviar al cliente».\nID: {{ $('Interpretar acción').first().json.respuesta_id }}\n\n<pre>{{ String($json.texto_final || $json.borrador || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}</pre>",
         "replyMarkup": "forceReply",
         "forceReply": {
           "force_reply": true
@@ -457,16 +479,8 @@
         "fieldsUi": {
           "fieldValues": [
             {
-              "fieldId": "estado",
-              "fieldValue": "editado"
-            },
-            {
               "fieldId": "texto_final",
               "fieldValue": "={{ $('Interpretar acción').first().json.texto }}"
-            },
-            {
-              "fieldId": "revisado_at",
-              "fieldValue": "={{ $now.toISO() }}"
             }
           ]
         }
@@ -561,7 +575,7 @@
         784
       ],
       "parameters": {
-        "jsCode": "// P5: responde sobre UN caso solo con la fila de v_caso_detalle (fechas en hora Bogotá).\nconst q = $('Interpretar acción').first().json;\nconst caso = $('Leer caso').first().json || {};\nif (!caso.numero_caso) {\n  return [{ json: { encontrado: false, chat_id: q.chat_id, valor: q.valor } }];\n}\nconst hora = (iso) => iso ? DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\") : null;\nconst datos = { ...caso };\nfor (const k of ['ticket_id', 'respuesta_id', 'escalamiento_id']) delete datos[k];\nfor (const k of Object.keys(datos)) if (k.endsWith('_at')) datos[k] = hora(datos[k]);\nif (datos.incidente) {\n  datos.incidente = { ...datos.incidente, detectado_at: hora(datos.incidente.detectado_at), inicio_at: hora(datos.incidente.inicio_at) };\n}\nif (Array.isArray(datos.correos)) datos.correos = datos.correos.map(c => ({ ...c, enviado_at: hora(c.enviado_at) }));\nconst p = $('Leer prompt P5').first().json;\nreturn [{ json: {\n  encontrado: true, chat_id: q.chat_id, numero_caso: caso.numero_caso, cliente: caso.cliente,\n  body: { model: 'gpt-4o-mini', temperature: 0, messages: [\n    { role: 'system', content: p.texto },\n    { role: 'user', content: 'Pregunta del líder: ' + q.pregunta + '\\n\\nDatos del caso (JSON):\\n' + JSON.stringify(datos) }\n  ] }\n} }];",
+        "jsCode": "// P5: responde sobre UN caso solo con la fila de v_caso_detalle (fechas en hora Bogotá).\nconst q = $('Interpretar acción').first().json;\nconst caso = $('Leer caso').first().json || {};\nif (!caso.numero_caso) {\n  return [{ json: { encontrado: false, chat_id: q.chat_id, valor: q.valor } }];\n}\nconst hora = (iso) => iso ? DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\") : null;\nconst datos = { ...caso };\nfor (const k of ['ticket_id', 'respuesta_id', 'escalamiento_id']) delete datos[k];\nfor (const k of Object.keys(datos)) if (k.endsWith('_at')) datos[k] = hora(datos[k]);\nif (datos.incidente) {\n  datos.incidente = { ...datos.incidente, detectado_at: hora(datos.incidente.detectado_at), inicio_at: hora(datos.incidente.inicio_at) };\n}\nif (Array.isArray(datos.correos)) datos.correos = datos.correos.map(c => ({ ...c, enviado_at: hora(c.enviado_at) }));\nconst p = $('Leer prompt P5').first().json;\nreturn [{ json: {\n  encontrado: true, chat_id: q.chat_id, numero_caso: caso.numero_caso, cliente: caso.cliente,\n  // Para los botones y para mostrar el borrador pendiente tal cual (no lo reescribe la IA)\n  respuesta_id: caso.respuesta_id || null, respuesta_estado: caso.respuesta_estado || null,\n  respuesta_tipo: caso.respuesta_tipo || null, borrador: caso.texto_final || caso.borrador || '',\n  escalamiento_id: caso.escalamiento_id || null, escalamiento_estado: caso.escalamiento_estado || null,\n  body: { model: 'gpt-4o-mini', temperature: 0, messages: [\n    { role: 'system', content: p.texto },\n    { role: 'user', content: 'Pregunta del líder: ' + q.pregunta + '\\n\\nDatos del caso (JSON):\\n' + JSON.stringify(datos) }\n  ] }\n} }];",
         "language": "javaScript",
         "mode": "runOnceForAllItems"
       }
@@ -632,7 +646,7 @@
         704
       ],
       "parameters": {
-        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst a = $('Armar llamada P5').first().json;\nconst texto = $input.first().json.choices[0].message.content;\nreturn [{ json: { chat_id: a.chat_id, mensaje: '🔎 <b>Caso #' + esc(a.numero_caso) + '</b> · ' + esc(a.cliente) + '\\n\\n' + esc(texto) + '\\n\\n<i>Responde a este mensaje para seguir preguntando por el caso.</i>' } }];",
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst corta = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };\nconst a = $('Armar llamada P5').first().json;\nconst texto = $input.first().json.choices[0].message.content;\n// ¿Qué botones lleva la respuesta? Solo los que aplican al estado actual del caso.\nconst respPendiente = !!a.respuesta_id && (a.respuesta_estado || 'pendiente') === 'pendiente';\nconst escAbierto = !!a.escalamiento_id && a.escalamiento_estado === 'abierto';\nconst botones = respPendiente && escAbierto ? 'resp_esc' : respPendiente ? 'resp' : escAbierto ? 'esc' : 'ninguno';\nconst esCom = a.respuesta_tipo === 'comunicado';\n// El borrador pendiente se muestra TAL CUAL está guardado (no lo resume la IA)\nconst borrador = respPendiente && a.borrador\n  ? '\\n\\n✍️ <b>' + (esCom ? 'Comunicado' : 'Respuesta') + ' pendiente de aprobación</b>\\n<blockquote>' + esc(corta(a.borrador, 2000)) + '</blockquote>'\n  : '';\nconst accion = respPendiente\n  ? '\\n👇 <b>Aprobar y enviar</b> manda este texto por correo al cliente. <b>Editar</b> te deja corregirlo antes (no se envía hasta que confirmes).' + (escAbierto ? ' <b>Confirmar escalamiento</b> manda la ficha a Ingeniería.' : '')\n  : (escAbierto ? '\\n\\n👇 El escalamiento sigue abierto: <b>Confirmar escalamiento</b> manda la ficha a Ingeniería.' : '');\nreturn [{ json: { chat_id: a.chat_id, botones, respuesta_id: a.respuesta_id, escalamiento_id: a.escalamiento_id,\n  mensaje: '🔎 <b>Caso #' + esc(a.numero_caso) + '</b> · ' + esc(a.cliente) + '\\n\\n' + esc(texto) + borrador + accion + '\\n\\n<i>Responde a este mensaje para seguir preguntando por el caso.</i>' } }];",
         "language": "javaScript",
         "mode": "runOnceForAllItems"
       }
@@ -643,8 +657,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2240,
-        704
+        2464,
+        944
       ],
       "parameters": {
         "additionalFields": {
@@ -774,7 +788,7 @@
         -400
       ],
       "parameters": {
-        "jsCode": "// Correo al cliente con el texto final aprobado (o editado). Modo demo: llega al buzón de prueba.\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst q = $('Preparar envío al cliente').first().json;\nconst caso = $('Leer caso para correo').first().json;\nconst dest = Object.fromEntries($('Leer destinatarios (cliente)').all().map(i => [i.json.rol, i.json.correo]));\nconst esCom = caso.respuesta_tipo === 'comunicado';\nconst texto = caso.texto_final || caso.borrador || '';\nconst asunto = '[Caso #' + caso.numero_caso + '] ' + (esCom ? 'Comunicado' : 'Respuesta') + ' de Soporte · ' + caso.asunto;\nconst html = '<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:640px\">' +\n  '<p style=\"color:#888;font-size:12px\">DEMO · En producción este correo iría al contacto de ' + esc(caso.cliente) + ' registrado en el help desk.</p>' +\n  '<p>' + esc(texto).replace(/\\n/g, '<br>') + '</p>' +\n  '<hr style=\"border:none;border-top:1px solid #ddd\"><p style=\"color:#888;font-size:12px\">Caso #' + caso.numero_caso + ' · ' + esc(caso.cliente) + ' (' + esc(caso.pais) + ') · ' +\n  (q.accion === 'guardar_edicion' ? 'Editado y aprobado' : 'Aprobado') + ' por el líder de soporte</p></div>';\nreturn [{ json: { para: dest.cliente, destinatario_real: 'contacto de ' + caso.cliente + ' (help desk)', asunto, html,\n  tipo: esCom ? 'comunicado_cliente' : 'respuesta_cliente', ticket_id: caso.ticket_id, numero_caso: caso.numero_caso,\n  respuesta_id: q.respuesta_id, chat_id: q.chat_id, cliente: caso.cliente, es_comunicado: esCom } }];",
+        "jsCode": "// Correo al cliente con el texto final aprobado (o editado y confirmado). Modo demo: llega al buzón de prueba.\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst q = $('Preparar envío al cliente').first().json;\nconst caso = $('Leer caso para correo').first().json;\nconst dest = Object.fromEntries($('Leer destinatarios (cliente)').all().map(i => [i.json.rol, i.json.correo]));\nconst esCom = caso.respuesta_tipo === 'comunicado';\nconst texto = caso.texto_final || caso.borrador || '';\nconst asunto = '[Caso #' + caso.numero_caso + '] ' + (esCom ? 'Comunicado' : 'Respuesta') + ' de Soporte · ' + caso.asunto;\nconst html = '<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:640px\">' +\n  '<p style=\"color:#888;font-size:12px\">DEMO · En producción este correo iría al contacto de ' + esc(caso.cliente) + ' registrado en el help desk.</p>' +\n  '<p>' + esc(texto).replace(/\\n/g, '<br>') + '</p>' +\n  '<hr style=\"border:none;border-top:1px solid #ddd\"><p style=\"color:#888;font-size:12px\">Caso #' + caso.numero_caso + ' · ' + esc(caso.cliente) + ' (' + esc(caso.pais) + ') · ' +\n  (q.accion === 'enviar_editado' ? 'Editado y aprobado' : 'Aprobado') + ' por el líder de soporte</p></div>';\nreturn [{ json: { para: dest.cliente, destinatario_real: 'contacto de ' + caso.cliente + ' (help desk)', asunto, html,\n  tipo: esCom ? 'comunicado_cliente' : 'respuesta_cliente', ticket_id: caso.ticket_id, numero_caso: caso.numero_caso,\n  respuesta_id: q.respuesta_id, chat_id: q.chat_id, cliente: caso.cliente, es_comunicado: esCom } }];",
         "language": "javaScript",
         "mode": "runOnceForAllItems"
       }
@@ -1257,6 +1271,397 @@
       },
       "onError": "continueRegularOutput",
       "webhookId": "2a9bf3ba-9209-4e90-8142-91951d1520ca"
+    },
+    {
+      "id": "5fbd818b-b930-4080-9d4f-dc8ca4bcab52",
+      "name": "¿Qué botones?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2240,
+        704
+      ],
+      "parameters": {
+        "options": {},
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.botones }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "resp_esc"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "borrador y escalamiento",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.botones }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "resp"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "solo borrador",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.botones }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "esc"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "solo escalamiento",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.botones }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "ninguno"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "sin botones",
+              "renameOutput": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5dfb34e5-2bf3-4460-8016-8c827d3da32d",
+      "name": "Respuesta con borrador y escalamiento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2464,
+        512
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $json.chat_id }}",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ap:{{ $json.respuesta_id }}"
+                    },
+                    "text": "✅ Aprobar y enviar"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ed:{{ $json.respuesta_id }}"
+                    },
+                    "text": "✏️ Editar"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=re:{{ $json.respuesta_id }}"
+                    },
+                    "text": "❌ Rechazar"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=es:{{ $json.escalamiento_id }}"
+                    },
+                    "text": "🛠 Confirmar escalamiento (correo a Ingeniería)"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "operation": "sendMessage",
+        "replyMarkup": "inlineKeyboard",
+        "resource": "message",
+        "text": "={{ $json.mensaje }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "73e5b5ae-f9d3-4684-bdf9-882bdf66ead4"
+    },
+    {
+      "id": "12265e39-4af9-4b33-aaa2-29b9e209fc65",
+      "name": "Respuesta con botones de borrador",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2464,
+        656
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $json.chat_id }}",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ap:{{ $json.respuesta_id }}"
+                    },
+                    "text": "✅ Aprobar y enviar"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ed:{{ $json.respuesta_id }}"
+                    },
+                    "text": "✏️ Editar"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=re:{{ $json.respuesta_id }}"
+                    },
+                    "text": "❌ Rechazar"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "operation": "sendMessage",
+        "replyMarkup": "inlineKeyboard",
+        "resource": "message",
+        "text": "={{ $json.mensaje }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "66e7b9a6-0274-4020-a7a5-9bfb88fef11b"
+    },
+    {
+      "id": "1f5c2ccc-b0b4-49fa-8bef-84394165e30d",
+      "name": "Respuesta con botón de escalamiento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2464,
+        800
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $json.chat_id }}",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=es:{{ $json.escalamiento_id }}"
+                    },
+                    "text": "🛠 Confirmar escalamiento (correo a Ingeniería)"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "operation": "sendMessage",
+        "replyMarkup": "inlineKeyboard",
+        "resource": "message",
+        "text": "={{ $json.mensaje }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "2694388f-0012-412c-9032-9fc5237cee63"
+    },
+    {
+      "id": "76da3718-dc8f-4264-b290-ef48b5d9c9ec",
+      "name": "Leer borrador a editar",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        384
+      ],
+      "parameters": {
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "respuesta_id",
+              "keyValue": "={{ $('Interpretar acción').first().json.respuesta_id }}"
+            }
+          ]
+        },
+        "limit": 1,
+        "matchType": "allFilters",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": false,
+        "tableId": "v_caso_detalle"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "735adcc9-a956-4753-ab36-5a44c4a18dde",
+      "name": "Confirmar texto editado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        576
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ok:{{ $('Interpretar acción').first().json.respuesta_id }}"
+                    },
+                    "text": "📧 Enviar al cliente"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ed:{{ $('Interpretar acción').first().json.respuesta_id }}"
+                    },
+                    "text": "✏️ Volver a editar"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "operation": "sendMessage",
+        "replyMarkup": "inlineKeyboard",
+        "resource": "message",
+        "text": "=👀 <b>Revisa el texto final antes de enviarlo al cliente</b>\n\n<blockquote>{{ String($('Interpretar acción').first().json.texto || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}</blockquote>\n\nSi no es correcto, toca «Volver a editar». Nada se ha enviado todavía.\nID: {{ $('Interpretar acción').first().json.respuesta_id }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "ac148a68-0c45-4bbb-9818-274bc5b63271"
+    },
+    {
+      "id": "f485b71c-2e04-4d29-b0ab-c81eb2070c11",
+      "name": "Marcar editada",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        -608
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "editado"
+            },
+            {
+              "fieldId": "revisado_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "id",
+              "keyValue": "={{ $('Interpretar acción').first().json.respuesta_id }}"
+            }
+          ]
+        },
+        "matchType": "allFilters",
+        "operation": "update",
+        "resource": "row",
+        "tableId": "respuestas"
+      }
+    },
+    {
+      "id": "47875388-496c-46d4-a809-d0344c638cb1",
+      "name": "Confirmar envío editado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        -608
+      ],
+      "parameters": {
+        "additionalFields": {
+          "text": "Enviando el texto editado al cliente…"
+        },
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar acción').first().json.query_id }}",
+        "resource": "callback"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "e4e58a21-3c64-485b-937c-2f77cb12a233"
     }
   ],
   "connections": {
@@ -1321,6 +1726,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Marcar editada",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -1351,17 +1763,6 @@
         [
           {
             "node": "Aviso de rechazo",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Confirmar edición": {
-      "main": [
-        [
-          {
-            "node": "Pedir texto corregido",
             "type": "main",
             "index": 0
           }
@@ -1452,29 +1853,7 @@
         ]
       ]
     },
-    "Componer respuesta del caso": {
-      "main": [
-        [
-          {
-            "node": "Enviar respuesta del caso",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Confirmar aprobación": {
-      "main": [
-        [
-          {
-            "node": "Preparar envío al cliente",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Guardar edición": {
       "main": [
         [
           {
@@ -1669,6 +2048,104 @@
         [
           {
             "node": "Aviso de escalamiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Componer respuesta del caso": {
+      "main": [
+        [
+          {
+            "node": "¿Qué botones?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Qué botones?": {
+      "main": [
+        [
+          {
+            "node": "Respuesta con borrador y escalamiento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta con botones de borrador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta con botón de escalamiento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar respuesta del caso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar edición": {
+      "main": [
+        [
+          {
+            "node": "Leer borrador a editar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer borrador a editar": {
+      "main": [
+        [
+          {
+            "node": "Pedir texto corregido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar edición": {
+      "main": [
+        [
+          {
+            "node": "Confirmar texto editado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar editada": {
+      "main": [
+        [
+          {
+            "node": "Confirmar envío editado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar envío editado": {
+      "main": [
+        [
+          {
+            "node": "Preparar envío al cliente",
             "type": "main",
             "index": 0
           }
