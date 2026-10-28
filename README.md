@@ -96,6 +96,14 @@ Nada llega al cliente sin aprobación humana, y lo que se aprueba siempre se ve 
 
 Detalle y errores restantes: `docs/evaluacion.md`. Retos y cómo se resolvieron: `docs/bitacora_retos.md`.
 
+## Documentos de la entrega
+
+| Documento | Para qué |
+| --- | --- |
+| `docs/notas_entrega.md` | Notas que pide la prueba: proceso de pensamiento, prompts, uso de IA y retos |
+| `docs/guion_video.md` | Guion del video de 5 minutos con tiempos y qué se ve en pantalla |
+| `docs/demo_preparacion.md` | Estado previo a la demo y tickets de prueba con el resultado esperado |
+
 ## Cómo levantarlo desde cero
 1. **Supabase:** crear un proyecto y correr los archivos de `sql/` en orden (01 → 11). Importar `data/kb_motivos.csv` a `kb_motivos`. En `10_correos.sql`, reemplazar `TU_CORREO_DE_PRUEBA` por el buzón donde quieres recibir los correos.
 2. **n8n:** crear 4 credenciales: OpenAI (API key), Supabase (host + `service_role`), Telegram (token de @BotFather) y Gmail OAuth2 (*Sign in with Google*).
