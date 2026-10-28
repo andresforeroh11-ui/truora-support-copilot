@@ -49,4 +49,6 @@ Clientes ficticios. Enviar MX-1, MX-2 y MX-3 con menos de 30 minutos entre el pr
 | MX-3 | fuente externa (gobierno) | P1 | comunicado proactivo | Mensaje con borrador **y alerta de incidente: fuente externa** |
 | CL-1 | plataforma (Truora) | P1 o P2 | escalar a Ingeniería | Mensaje con ficha P3 y botón *Confirmar escalamiento* |
 
+**Ensayo del 28 oct (13:35):** 4 de 4 como se esperaba. MX-1 a MX-3 (casos #1056–#1058): fuente externa, P1, comunicado proactivo, confianza 0,90; al tercero se creó el incidente "fuente externa · identidad · MX". CL-1 (#1059): plataforma, P1, escalar a Ingeniería, confianza 0,80, con ficha P3. El incidente del ensayo se cerró después para que la alerta vuelva a salir en la toma buena.
+
 Si en el ensayo algún ticket sale distinto, se anota y se decide: si el resultado es defendible, se muestra tal cual; un modelo que acierta el 87 % no tiene por qué acertar siempre, y explicarlo suma.
