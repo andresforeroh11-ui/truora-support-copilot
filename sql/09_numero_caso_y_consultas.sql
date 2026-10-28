@@ -45,9 +45,61 @@ left join lateral (
                             'inicio_at', x.inicio_at, 'casos', x.casos, 'codigo_motivo', x.codigo_motivo) as incidente
   from incidentes x where t.id = any (x.ticket_ids) order by x.created_at desc limit 1) i on true;
 
--- v_resumen_diario: ver la definición completa aplicada en Supabase (migración resumen_diario_con_casos).
--- Cambios frente a 08: base incluye numero_caso; sla_en_riesgo agrega 'caso' y 'desde';
--- incidentes agrega 'casos', 'desde' y 'estado'; patrones agrega 'casos'.
+-- v_resumen_diario con número de caso y hora "desde" (reemplaza la de 08)
+create or replace view v_resumen_diario with (security_invoker = true) as
+with base as (
+  select t.id as ticket_id, t.numero_caso, t.cliente, t.pais, t.asunto, t.created_at,
+         c.severidad, c.origen_falla, c.producto, c.codigo_motivo, c.accion_sugerida, c.requiere_escalamiento,
+         c.latencia_ms, c.tokens_entrada, c.tokens_salida, r.estado as estado_respuesta
+  from tickets t
+  join clasificaciones c on c.ticket_id = t.id
+  left join respuestas r on r.ticket_id = t.id
+  where not t.es_set_prueba and t.created_at > now() - interval '24 hours'
+), sla as (
+  select base.*, case base.severidad when 'P1' then interval '30 minutes' when 'P2' then interval '2 hours'
+                                     when 'P3' then interval '24 hours' else interval '48 hours' end as limite
+  from base
+)
+select (now() at time zone 'America/Bogota') as generado_en,
+  (select count(*) from base) as tickets_24h,
+  (select coalesce(jsonb_object_agg(x.severidad, x.n), '{}'::jsonb) from (select severidad, count(*) n from base group by severidad) x) as por_severidad,
+  (select coalesce(jsonb_object_agg(x.origen_falla, x.n), '{}'::jsonb) from (select origen_falla, count(*) n from base group by origen_falla) x) as por_origen,
+  (select count(*) from base where requiere_escalamiento) as escalados_ingenieria,
+  (select round(100.0 * avg((accion_sugerida = any (array['responder_con_kb','comunicado_proactivo']))::int), 1) from base) as pct_resoluble_sin_escalar,
+  (select coalesce(jsonb_agg(jsonb_build_object(
+      'caso', sla.numero_caso, 'cliente', sla.cliente, 'pais', sla.pais, 'severidad', sla.severidad, 'asunto', sla.asunto,
+      'desde', to_char(sla.created_at at time zone 'America/Bogota', 'DD/MM HH24:MI'),
+      'minutos_abierto', round(extract(epoch from now() - sla.created_at) / 60), 'limite_min', extract(epoch from sla.limite) / 60)
+      order by sla.severidad, sla.created_at), '[]'::jsonb)
+   from sla where coalesce(sla.estado_respuesta, 'pendiente') = 'pendiente' and now() - sla.created_at > sla.limite * 0.8) as sla_en_riesgo,
+  (select coalesce(jsonb_agg(jsonb_build_object(
+      'firma', i.firma, 'producto', i.producto, 'pais', i.pais, 'tickets', array_length(i.ticket_ids, 1), 'codigo', i.codigo_motivo,
+      'casos', i.casos, 'desde', to_char(coalesce(i.inicio_at, i.created_at) at time zone 'America/Bogota', 'DD/MM HH24:MI'),
+      'estado', i.estado) order by i.created_at), '[]'::jsonb)
+   from incidentes i where i.created_at > now() - interval '24 hours') as incidentes,
+  (select coalesce(jsonb_agg(jsonb_build_object('patron', x.producto || ' · ' || x.origen_falla || coalesce(' · ' || x.codigo_motivo, ''),
+      'tickets', x.n, 'casos', x.casos) order by x.n desc), '[]'::jsonb)
+   from (select producto, origen_falla, codigo_motivo, count(*) n, array_agg(numero_caso order by numero_caso) casos
+         from base group by producto, origen_falla, codigo_motivo having count(*) >= 2) x) as patrones,
+  (select coalesce(jsonb_object_agg(x.estado, x.n), '{}'::jsonb) from (select r.estado, count(*) n from respuestas r join base b on b.ticket_id = r.ticket_id group by r.estado) x) as borradores,
+  (select round(100.0 * count(*) filter (where r.estado = 'aprobado')::numeric
+          / nullif(count(*) filter (where r.estado = any (array['aprobado','editado','rechazado'])), 0), 1)
+   from respuestas r join base b on b.ticket_id = r.ticket_id) as pct_borradores_sin_edicion,
+  (select round(avg(latencia_ms) / 1000.0, 1) from base) as seg_promedio_clasificacion,
+  (select round((sum(tokens_entrada)::numeric * 0.15 + sum(tokens_salida)::numeric * 0.60) / 1000000 / nullif(count(*), 0), 5) from base) as costo_usd_por_ticket_p1;
 
--- Prompt P5 (texto completo en prompts/P5_consulta_caso.md)
--- insert into prompts (nombre, version, texto, notas, activo) values ('P5', 'P5-v1', '<texto>', '...', true);
+-- Prompt P5: responder preguntas del líder sobre un caso (explicación en prompts/P5_consulta_caso.md)
+insert into prompts (nombre, version, texto, notas, activo) values ('P5', 'P5-v1',
+$p$Eres el asistente del líder de soporte de una plataforma de identidad digital y WhatsApp. El líder te pregunta por UN caso desde Telegram.
+
+Recibes la pregunta y un JSON con los datos del caso tal como están en la base de datos (ticket, clasificación, borrador, escalamiento e incidente). Las fechas ya vienen en hora de Bogotá.
+
+Reglas:
+1. Responde SOLO con lo que está en el JSON. Si el dato no está, di "No tengo ese dato en la base" y sugiere qué revisar o a quién pedirlo.
+2. No inventes fechas, números de caso, estados, causas ni tiempos de solución.
+3. Responde en español, directo, en máximo 8 líneas. Empieza por la respuesta, no por repetir la pregunta.
+4. Estados del borrador: pendiente = nadie lo ha revisado; aprobado o editado = listo para enviar al cliente; rechazado = no se usará.
+5. Si te piden redactar algo para el cliente, hazlo breve y aclara que debe pasar por aprobación.
+6. Si el caso es parte de un incidente, menciónalo con sus casos y desde cuándo ocurre.
+7. Texto plano, sin Markdown ni HTML.$p$,
+'Consulta de un caso desde Telegram (workflow C). Solo usa la fila de v_caso_detalle.', true);

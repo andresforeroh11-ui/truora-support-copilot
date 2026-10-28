@@ -175,7 +175,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst texto = $('P4 · Resumen del líder').first().json.choices[0].message.content;\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet cuerpo = esc(texto);\nfor (const t of titulos) cuerpo = cuerpo.split(t).join('<b>' + t + '</b>');\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nreturn [{ json: { mensaje: '☀️ <b>Resumen de soporte · ' + fecha + '</b>\\n\\n' + cuerpo } }];"
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst texto = $('P4 · Resumen del líder').first().json.choices[0].message.content;\nconst m = $('Armar llamada P4').first().json.metricas || {};\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet cuerpo = esc(texto);\nfor (const t of titulos) cuerpo = cuerpo.split(t).join('<b>' + t + '</b>');\n// Detalle fijo desde SQL: números de caso y desde cuándo ocurre (no lo escribe la IA)\nconst lista = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst casos = (arr) => (arr || []).map(x => '#' + x).join(', ');\nconst det = [];\nconst ejemplos = [];\nfor (const i of lista(m.incidentes)) {\n  ejemplos.push(...(i.casos || []));\n  det.push('🚨 ' + esc(i.firma === 'fuente_externa' ? 'Fuente externa' : 'Plataforma') + ' · ' + esc(i.producto) + ' ' + esc(i.pais) +\n    ' · casos ' + esc(casos(i.casos)) + ' · desde ' + esc(i.desde) + ' (' + esc(i.estado) + ')');\n}\nfor (const s of lista(m.sla_en_riesgo)) {\n  ejemplos.push(s.caso);\n  det.push('⏱ #' + esc(s.caso) + ' ' + esc(s.severidad) + ' · ' + esc(s.cliente) + ' · desde ' + esc(s.desde) +\n    ' · ' + esc(s.minutos_abierto) + ' de ' + esc(s.limite_min) + ' min');\n}\nfor (const p of lista(m.patrones)) {\n  ejemplos.push(...(p.casos || []));\n  det.push('🔁 ' + esc(p.patron) + ' · casos ' + esc(casos(p.casos)));\n}\nconst detalle = det.length ? '\\n\\n<b>Casos a revisar</b>\\n' + det.slice(0, 15).join('\\n') +\n  (ejemplos.length ? '\\n\\n💬 Pregunta por uno: <code>caso ' + esc(ejemplos[0]) + '</code> y tu pregunta.' : '') : '';\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nreturn [{ json: { mensaje: '☀️ <b>Resumen de soporte · ' + fecha + '</b>\\n\\n' + cuerpo + detalle } }];"
       }
     },
     {
@@ -209,10 +209,119 @@
         -96
       ],
       "parameters": {
-        "content": "## Resumen diario del líder (P4)\nLa vista SQL v_resumen_diario calcula tickets, SLA en riesgo, incidentes, patrones, calidad de borradores y costo. P4 solo interpreta y sugiere destino para cada patrón (Producto, Ingeniería, KB o comunicación).",
+        "content": "## Resumen diario del líder (P4)\nLa vista SQL v_resumen_diario calcula tickets, SLA en riesgo, incidentes, patrones, calidad de borradores y costo. P4 solo interpreta y sugiere destino para cada patrón.\nSe envía a Telegram y por correo al líder (tabla destinatarios_correo); cada envío queda en correos_enviados.",
         "color": 4,
         "width": 432,
         "height": 448
+      }
+    },
+    {
+      "id": "9f95691e-a5d1-4b37-a442-0d14cb0dc2ce",
+      "name": "Leer destinatarios",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        400
+      ],
+      "parameters": {
+        "filterType": "none",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": true,
+        "tableId": "destinatarios_correo"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "3fca752f-066d-4423-9925-94dc570cf1be",
+      "name": "Armar correo del resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// El mismo resumen de Telegram, en HTML para correo.\nconst dest = Object.fromEntries($('Leer destinatarios').all().map(i => [i.json.rol, i.json.correo]));\nconst msg = $('Componer resumen').first().json.mensaje;\nconst fecha = $now.setZone('America/Bogota').setLocale('es').toFormat('ccc d LLL yyyy');\nconst html = '<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:680px;line-height:1.5\">' +\n  msg.replace(/<code>/g, '<code style=\"background:#f2f2f2;padding:1px 4px;border-radius:3px\">').replace(/\\n/g, '<br>') +\n  '<hr style=\"border:none;border-top:1px solid #ddd\"><p style=\"color:#888;font-size:12px\">Cifras calculadas en SQL (v_resumen_diario); la IA solo las redacta. DEMO: datos sintéticos.</p></div>';\nreturn [{ json: { para: dest.lider, asunto: 'Resumen de soporte · ' + fecha, html } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "c853b73c-2bb3-4774-af0e-4d4a201a0344",
+      "name": "Enviar resumen por correo",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2064,
+        400
+      ],
+      "parameters": {
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "operation": "send",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Soporte · Copiloto (demo)"
+        },
+        "resource": "message",
+        "sendTo": "={{ $json.para }}",
+        "subject": "={{ $json.asunto }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "b17cc66f-0239-43d4-b6d3-9d5e4de549f1"
+    },
+    {
+      "id": "61472173-405b-4a8f-9d4c-80b3590a9ee9",
+      "name": "Registrar correo del resumen",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2288,
+        400
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tipo",
+              "fieldValue": "resumen_diario"
+            },
+            {
+              "fieldId": "destinatario",
+              "fieldValue": "={{ $('Armar correo del resumen').first().json.para }}"
+            },
+            {
+              "fieldId": "destinatario_real",
+              "fieldValue": "Líder de soporte"
+            },
+            {
+              "fieldId": "asunto",
+              "fieldValue": "={{ $('Armar correo del resumen').first().json.asunto }}"
+            },
+            {
+              "fieldId": "cuerpo",
+              "fieldValue": "={{ $('Armar correo del resumen').first().json.html }}"
+            },
+            {
+              "fieldId": "estado",
+              "fieldValue": "={{ $json.id ? 'enviado' : 'error' }}"
+            },
+            {
+              "fieldId": "gmail_id",
+              "fieldValue": "={{ $json.id || '' }}"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $json.id ? '' : String(($json.error && ($json.error.message || $json.error)) || 'sin respuesta de Gmail') }}"
+            }
+          ]
+        },
+        "operation": "create",
+        "resource": "row",
+        "tableId": "correos_enviados"
       }
     }
   ],
@@ -304,11 +413,54 @@
           }
         ]
       ]
+    },
+    "Enviar resumen": {
+      "main": [
+        [
+          {
+            "node": "Leer destinatarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer destinatarios": {
+      "main": [
+        [
+          {
+            "node": "Armar correo del resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar correo del resumen": {
+      "main": [
+        [
+          {
+            "node": "Enviar resumen por correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar resumen por correo": {
+      "main": [
+        [
+          {
+            "node": "Registrar correo del resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "timezone": "America/Bogota"
-  },
-  "pinData": {}
+  }
 }

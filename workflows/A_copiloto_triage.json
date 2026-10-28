@@ -552,7 +552,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Mensaje para el líder/N1 en Telegram (HTML escapado, máx. ~3.500 caracteres).\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst corta = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst resp = $('Guardar respuesta').first().json;\nlet ficha = null;\ntry { ficha = $('Guardar escalamiento').first().json.ficha; } catch (e) { ficha = null; }\nconst icono = { P1: '🔴', P2: '🟠', P3: '🟡', P4: '⚪' }[c.severidad] || '❓';\nconst lineas = [\n  icono + ' <b>' + esc(c.severidad) + ' · ' + esc(c.origen_falla || 'sin origen') + '</b>',\n  esc(t.cliente) + ' (' + esc(c.pais) + ') · ' + esc(c.producto) + ' · ' + esc(c.ambiente || 'ambiente ?'),\n  '<i>' + esc(t.asunto) + '</i>',\n  '',\n  'Acción: <b>' + esc(c.accion_sugerida) + '</b>' + (c.requiere_escalamiento ? ' → ESCALADO A INGENIERÍA' : ''),\n  'Por qué: ' + esc(c.justificacion),\n  'Pedir al cliente: ' + esc(c.datos_faltantes.length ? c.datos_faltantes.join('; ') : 'nada'),\n  '',\n  '<b>✍️ ' + (resp.tipo === 'comunicado' ? 'Comunicado proactivo' : 'Borrador de respuesta') + '</b> (pendiente de aprobación)',\n  esc(corta(resp.borrador, 1500)),\n];\nif (ficha && typeof ficha === 'object') {\n  lineas.push('', '<b>🛠 Ficha para Ingeniería</b>', esc(ficha.titulo),\n    'Hipótesis: ' + esc(ficha.hipotesis) + ' (certeza ' + esc(ficha.certeza) + ')',\n    'Revisar: ' + esc((ficha.que_revisar || []).slice(0, 4).join(' · ')));\n}\nif (!c.json_valido) lineas.push('', '⚠️ Revisar clasificación: ' + esc(c.error));\nreturn [{ json: { mensaje: lineas.join('\\n'), respuesta_id: resp.id } }];"
+        "jsCode": "// Mensaje para el líder/N1 en Telegram (HTML escapado, máx. ~3.500 caracteres).\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst corta = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst resp = $('Guardar respuesta').first().json;\nlet esc_row = null;\ntry { esc_row = $('Guardar escalamiento').first().json; } catch (e) { esc_row = null; }\nconst ficha = esc_row && esc_row.ficha;\nconst icono = { P1: '🔴', P2: '🟠', P3: '🟡', P4: '⚪' }[c.severidad] || '❓';\nconst esComunicado = resp.tipo === 'comunicado';\nconst lineas = [\n  icono + ' <b>' + esc(c.severidad) + ' · ' + esc(c.origen_falla || 'sin origen') + '</b>',\n  '📌 <b>Caso #' + esc(t.numero_caso) + '</b> · recibido ' + esc(hora(t.created_at)) + ' (hora Bogotá)',\n  esc(t.cliente) + ' (' + esc(c.pais) + ') · ' + esc(c.producto) + ' · ' + esc(c.ambiente || 'ambiente ?'),\n  '<i>' + esc(t.asunto) + '</i>',\n  '',\n  'Acción: <b>' + esc(c.accion_sugerida) + '</b>' + (c.requiere_escalamiento ? ' → ESCALAMIENTO A INGENIERÍA' : ''),\n  'Por qué: ' + esc(c.justificacion),\n  'Pedir al cliente: ' + esc(c.datos_faltantes.length ? c.datos_faltantes.join('; ') : 'nada'),\n  '',\n  '<b>✍️ ' + (esComunicado ? 'Comunicado proactivo' : 'Borrador de respuesta') + '</b> (pendiente de aprobación)',\n  esc(corta(resp.borrador, 1500)),\n];\nif (ficha && typeof ficha === 'object') {\n  lineas.push('', '<b>🛠 Ficha para Ingeniería</b>', esc(ficha.titulo),\n    'Hipótesis: ' + esc(ficha.hipotesis) + ' (certeza ' + esc(ficha.certeza) + ')',\n    'Revisar: ' + esc((ficha.que_revisar || []).slice(0, 4).join(' · ')));\n}\nif (!c.json_valido) lineas.push('', '⚠️ Revisar clasificación: ' + esc(c.error));\nlineas.push('', '📧 <b>Aprobar y enviar</b> manda ' + (esComunicado ? 'el comunicado' : 'la respuesta') + ' por correo al cliente y te confirmo el envío aquí.');\nif (esc_row && esc_row.id) lineas.push('📧 <b>Confirmar escalamiento</b> manda la ficha por correo a Ingeniería.');\nlineas.push('💬 Para preguntar por este caso escribe: <code>caso ' + esc(t.numero_caso) + '</code> y tu pregunta.');\nreturn [{ json: { mensaje: lineas.join('\\n'), respuesta_id: resp.id, escalamiento_id: (esc_row && esc_row.id) || null, con_escalamiento: !!(esc_row && esc_row.id) } }];"
       }
     },
     {
@@ -561,7 +561,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2704,
+        2816,
         80
       ],
       "parameters": {
@@ -576,22 +576,22 @@
               "row": {
                 "buttons": [
                   {
-                    "text": "✅ Aprobar",
                     "additionalFields": {
                       "callback_data": "=ap:{{ $json.respuesta_id }}"
-                    }
+                    },
+                    "text": "✅ Aprobar y enviar"
                   },
                   {
-                    "text": "✏️ Editar",
                     "additionalFields": {
                       "callback_data": "=ed:{{ $json.respuesta_id }}"
-                    }
+                    },
+                    "text": "✏️ Editar"
                   },
                   {
-                    "text": "❌ Rechazar",
                     "additionalFields": {
                       "callback_data": "=re:{{ $json.respuesta_id }}"
-                    }
+                    },
+                    "text": "❌ Rechazar"
                   }
                 ]
               }
@@ -700,7 +700,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Incidente = 3+ tickets del mismo producto y país en 30 min. La firma dice a quién le toca.\nconst actual = $('Validar JSON').first().json;\nconst rec = $('Leer clasificaciones recientes').all().map(i => i.json).filter(r => r.id);\nconst abiertos = $('Leer incidentes abiertos').all().map(i => i.json).filter(r => r.id);\nif (rec.length < 3 || abiertos.length) return [];\nconst n = (o) => rec.filter(r => r.origen_falla === o).length;\nlet firma = null;\nif (n('fuente_externa_gobierno') >= rec.length / 2) firma = 'fuente_externa';\nelse if (n('truora') + n('indeterminado') >= rec.length / 2) firma = 'plataforma';\nif (!firma) return [];\nconst conteo = {};\nfor (const r of rec) if (r.codigo_motivo) conteo[r.codigo_motivo] = (conteo[r.codigo_motivo] || 0) + 1;\nconst codigo = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a])[0] || null;\nconst base = rec.length + ' tickets de ' + actual.producto + ' en ' + actual.pais + ' en los últimos 30 min.';\nconst mensaje = firma === 'fuente_externa'\n  ? '🚨 <b>Posible incidente: FUENTE EXTERNA</b>\\n' + base + (codigo ? '\\nCódigo común: ' + codigo : '') +\n    '\\n<b>Acción:</b> confirmar en status.truora.com, enviar comunicado proactivo a los clientes del país y no escalar a Ingeniería.'\n  : '🚨 <b>Posible incidente de PLATAFORMA</b>\\n' + base +\n    '\\n<b>Acción:</b> abrir incidente con Ingeniería (adjuntar fichas P3) y comunicar a los clientes afectados.';\nreturn [{ json: { producto: actual.producto, pais: actual.pais, firma, codigo_motivo: codigo, ticket_ids: rec.map(r => r.ticket_id), mensaje_alerta: mensaje } }];"
+        "jsCode": "// Incidente = 3+ tickets del mismo producto y país en 30 min. La firma dice a quién le toca.\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst actual = $('Validar JSON').first().json;\nconst todos = $('Leer clasificaciones recientes').all().map(i => i.json).filter(r => r.id);\nconst abiertos = $('Leer incidentes abiertos').all().map(i => i.json).filter(r => r.id);\n// Una fila por ticket (la clasificación más reciente)\nconst porTicket = {};\nfor (const r of todos) if (!porTicket[r.ticket_id] || r.created_at > porTicket[r.ticket_id].created_at) porTicket[r.ticket_id] = r;\nconst rec = Object.values(porTicket);\nif (rec.length < 3 || abiertos.length) return [];\nconst n = (o) => rec.filter(r => r.origen_falla === o).length;\nlet firma = null;\nif (n('fuente_externa_gobierno') >= rec.length / 2) firma = 'fuente_externa';\nelse if (n('truora') + n('indeterminado') >= rec.length / 2) firma = 'plataforma';\nif (!firma) return [];\nconst conteo = {};\nfor (const r of rec) if (r.codigo_motivo) conteo[r.codigo_motivo] = (conteo[r.codigo_motivo] || 0) + 1;\nconst codigo = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a])[0] || null;\nconst casos = rec.map(r => Number(r.numero_caso)).filter(Boolean).sort((a, b) => a - b);\nconst inicio = rec.map(r => r.ticket_created_at || r.created_at).sort()[0];\nconst base = rec.length + ' tickets de ' + actual.producto + ' en ' + actual.pais + ' en los últimos 30 min.' +\n  '\\n📌 <b>Casos:</b> ' + casos.map(x => '#' + x).join(', ') +\n  '\\n🕒 <b>Ocurre desde:</b> ' + hora(inicio) + ' (primer ticket, hora Bogotá)' +\n  '\\nDetectado: ' + hora($now.toISO());\nconst mensaje = firma === 'fuente_externa'\n  ? '🚨 <b>Posible incidente: FUENTE EXTERNA</b>\\n' + base + (codigo ? '\\nCódigo común: ' + codigo : '') +\n    '\\n<b>Acción:</b> confirmar en status.truora.com, enviar comunicado proactivo a los clientes del país y no escalar a Ingeniería.'\n  : '🚨 <b>Posible incidente de PLATAFORMA</b>\\n' + base +\n    '\\n<b>Acción:</b> abrir incidente con Ingeniería (adjuntar fichas P3) y comunicar a los clientes afectados.';\nreturn [{ json: { producto: actual.producto, pais: actual.pais, firma, codigo_motivo: codigo, ticket_ids: rec.map(r => r.ticket_id), casos, inicio_at: inicio, mensaje_alerta: mensaje + '\\n💬 Pregunta por cualquiera: <code>caso ' + casos[0] + '</code> y tu pregunta.' } }];"
       }
     },
     {
@@ -738,6 +738,14 @@
             {
               "fieldId": "ticket_ids",
               "fieldValue": "={{ $json.ticket_ids }}"
+            },
+            {
+              "fieldId": "casos",
+              "fieldValue": "={{ $json.casos }}"
+            },
+            {
+              "fieldId": "inicio_at",
+              "fieldValue": "={{ $json.inicio_at }}"
             },
             {
               "fieldId": "mensaje_alerta",
@@ -788,6 +796,99 @@
         "width": 656,
         "height": 336
       }
+    },
+    {
+      "id": "8c78e221-66c8-4db6-8681-65589520fedf",
+      "name": "¿Con escalamiento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2592,
+        -32
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.con_escalamiento }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          }
+        }
+      }
+    },
+    {
+      "id": "5ef698d8-634c-4f29-99fc-f2a0b0cc69fd",
+      "name": "Enviar a Telegram con escalamiento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2816,
+        -128
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "TU_CHAT_ID",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ap:{{ $json.respuesta_id }}"
+                    },
+                    "text": "✅ Aprobar y enviar"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=ed:{{ $json.respuesta_id }}"
+                    },
+                    "text": "✏️ Editar"
+                  },
+                  {
+                    "additionalFields": {
+                      "callback_data": "=re:{{ $json.respuesta_id }}"
+                    },
+                    "text": "❌ Rechazar"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "additionalFields": {
+                      "callback_data": "=es:{{ $json.escalamiento_id }}"
+                    },
+                    "text": "🛠 Confirmar escalamiento (correo a Ingeniería)"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "operation": "sendMessage",
+        "replyMarkup": "inlineKeyboard",
+        "resource": "message",
+        "text": "={{ $json.mensaje }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "155731df-0db2-428e-aef2-527e279fd337"
     }
   ],
   "connections": {
@@ -979,17 +1080,6 @@
         ]
       ]
     },
-    "Componer mensaje": {
-      "main": [
-        [
-          {
-            "node": "Enviar a Telegram",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Leer clasificaciones recientes": {
       "main": [
         [
@@ -1033,11 +1123,39 @@
           }
         ]
       ]
+    },
+    "Componer mensaje": {
+      "main": [
+        [
+          {
+            "node": "¿Con escalamiento?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Con escalamiento?": {
+      "main": [
+        [
+          {
+            "node": "Enviar a Telegram con escalamiento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar a Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "timezone": "America/Bogota"
-  },
-  "pinData": {}
+  }
 }

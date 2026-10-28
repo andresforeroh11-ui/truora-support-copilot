@@ -43,4 +43,23 @@ alter table escalamientos add column if not exists confirmado_at timestamptz;
 alter table destinatarios_correo enable row level security;
 alter table correos_enviados     enable row level security;
 
--- v_caso_detalle (versión final): ver la migración aplicada en Supabase "correos_enviados_y_destinatarios".
+-- v_caso_detalle (versión final): agrega ids, fechas de envío y la lista de correos del caso
+create or replace view v_caso_detalle with (security_invoker = true) as
+select t.numero_caso, t.ticket_ref, t.created_at as recibido_at, t.cliente, t.pais, t.canal, t.asunto, t.cuerpo,
+       c.severidad, c.origen_falla, c.producto, c.ambiente, c.codigo_motivo, c.accion_sugerida,
+       c.requiere_escalamiento, c.justificacion, c.datos_faltantes, c.confianza, c.created_at as clasificado_at,
+       r.tipo as respuesta_tipo, r.estado as respuesta_estado, r.borrador, r.texto_final, r.revisado_at,
+       e.estado as escalamiento_estado, e.hipotesis, e.ficha, e.created_at as escalado_at,
+       i.incidente,
+       t.id as ticket_id, r.id as respuesta_id, e.id as escalamiento_id,
+       r.enviado_at as correo_cliente_enviado_at, e.confirmado_at as correo_ingenieria_enviado_at,
+       (select coalesce(jsonb_agg(jsonb_build_object('tipo', m.tipo, 'estado', m.estado, 'destinatario', m.destinatario, 'enviado_at', m.created_at) order by m.created_at), '[]'::jsonb)
+        from correos_enviados m where m.ticket_id = t.id) as correos
+from tickets t
+left join lateral (select * from clasificaciones x where x.ticket_id = t.id order by x.created_at desc limit 1) c on true
+left join lateral (select * from respuestas x where x.ticket_id = t.id order by x.created_at desc limit 1) r on true
+left join lateral (select * from escalamientos x where x.ticket_id = t.id order by x.created_at desc limit 1) e on true
+left join lateral (
+  select jsonb_build_object('firma', x.firma, 'estado', x.estado, 'detectado_at', x.created_at,
+                            'inicio_at', x.inicio_at, 'casos', x.casos, 'codigo_motivo', x.codigo_motivo) as incidente
+  from incidentes x where t.id = any (x.ticket_ids) order by x.created_at desc limit 1) i on true;

@@ -33,7 +33,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Interpreta el botón (ap/ed/re) o la respuesta con el texto editado.\nconst u = $input.first().json;\nif (u.callback_query) {\n  const cq = u.callback_query;\n  const [pref, id] = String(cq.data || '').split(':');\n  const mapa = { ap: 'aprobar', ed: 'editar', re: 'rechazar' };\n  return [{ json: { accion: mapa[pref] || 'ignorar', respuesta_id: id, query_id: cq.id, chat_id: cq.message.chat.id } }];\n}\nconst m = u.message;\nconst ref = m && m.reply_to_message && String(m.reply_to_message.text || '').match(/ID: ([0-9a-f-]{36})/);\nif (ref && m.text) {\n  return [{ json: { accion: 'guardar_edicion', respuesta_id: ref[1], texto: m.text, query_id: null, chat_id: m.chat.id } }];\n}\nreturn [];"
+        "jsCode": "// Interpreta el botón (ap/ed/re/es), la respuesta con el texto editado o una pregunta sobre un caso.\nconst u = $input.first().json;\nif (u.callback_query) {\n  const cq = u.callback_query;\n  const [pref, id] = String(cq.data || '').split(':');\n  const mapa = { ap: 'aprobar', ed: 'editar', re: 'rechazar', es: 'escalar' };\n  const accion = mapa[pref] || 'ignorar';\n  return [{ json: { accion, respuesta_id: accion === 'escalar' ? null : id, escalamiento_id: accion === 'escalar' ? id : null, query_id: cq.id, chat_id: cq.message.chat.id } }];\n}\nconst m = u.message;\nif (!m || !m.text) return [];\nconst previo = String((m.reply_to_message && m.reply_to_message.text) || '');\nconst ref = previo.match(/ID: ([0-9a-f-]{36})/);\nif (ref) {\n  return [{ json: { accion: 'guardar_edicion', respuesta_id: ref[1], texto: m.text, query_id: null, chat_id: m.chat.id } }];\n}\n// Consulta: \"caso 1050 ...\", \"#1050 ...\", \"1050 ...\", \"T11 ...\" o respondiendo a un mensaje que trae \"Caso #1050\"\nconst txt = m.text.trim();\nconst num = txt.match(/(?:caso|#)\\s*#?\\s*(\\d{3,7})/i) || txt.match(/^(\\d{3,7})\\b/) || previo.match(/Caso #(\\d{3,7})/);\nconst tref = txt.match(/\\b(T\\d{2})\\b/i);\nconst base = { pregunta: txt, chat_id: m.chat.id, query_id: null };\nif (num) return [{ json: { ...base, accion: 'consultar', campo: 'numero_caso', valor: num[1] } }];\nif (tref) return [{ json: { ...base, accion: 'consultar', campo: 'ticket_ref', valor: tref[1].toUpperCase() } }];\nreturn [{ json: { ...base, accion: 'ayuda' } }];"
       }
     },
     {
@@ -42,8 +42,8 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        448,
-        288
+        896,
+        -192
       ],
       "parameters": {
         "resource": "row",
@@ -77,92 +77,158 @@
         "rules": {
           "values": [
             {
-              "outputKey": "aprobar",
-              "renameOutput": true,
               "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
+                "combinator": "and",
                 "conditions": [
                   {
                     "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
                     "operator": {
-                      "type": "string",
-                      "operation": "equals"
+                      "operation": "equals",
+                      "type": "string"
                     },
                     "rightValue": "aprobar"
                   }
                 ],
-                "combinator": "and"
-              }
-            },
-            {
-              "outputKey": "rechazar",
-              "renameOutput": true,
-              "conditions": {
                 "options": {
                   "caseSensitive": true,
                   "leftValue": "",
                   "typeValidation": "strict"
-                },
+                }
+              },
+              "outputKey": "aprobar",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
                 "conditions": [
                   {
                     "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
                     "operator": {
-                      "type": "string",
-                      "operation": "equals"
+                      "operation": "equals",
+                      "type": "string"
                     },
                     "rightValue": "rechazar"
                   }
                 ],
-                "combinator": "and"
-              }
-            },
-            {
-              "outputKey": "editar",
-              "renameOutput": true,
-              "conditions": {
                 "options": {
                   "caseSensitive": true,
                   "leftValue": "",
                   "typeValidation": "strict"
-                },
+                }
+              },
+              "outputKey": "rechazar",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
                 "conditions": [
                   {
                     "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
                     "operator": {
-                      "type": "string",
-                      "operation": "equals"
+                      "operation": "equals",
+                      "type": "string"
                     },
                     "rightValue": "editar"
                   }
                 ],
-                "combinator": "and"
-              }
-            },
-            {
-              "outputKey": "guardar_edicion",
-              "renameOutput": true,
-              "conditions": {
                 "options": {
                   "caseSensitive": true,
                   "leftValue": "",
                   "typeValidation": "strict"
-                },
+                }
+              },
+              "outputKey": "editar",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
                 "conditions": [
                   {
                     "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
                     "operator": {
-                      "type": "string",
-                      "operation": "equals"
+                      "operation": "equals",
+                      "type": "string"
                     },
                     "rightValue": "guardar_edicion"
                   }
                 ],
-                "combinator": "and"
-              }
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "guardar_edicion",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "consultar"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "consultar",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "ayuda"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "ayuda",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "escalar"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "escalar",
+              "renameOutput": true
             }
           ]
         },
@@ -226,33 +292,11 @@
         "operation": "answerQuery",
         "queryId": "={{ $('Interpretar acción').first().json.query_id }}",
         "additionalFields": {
-          "text": "Respuesta aprobada ✅"
+          "text": "Aprobada ✅ Enviando el correo al cliente…"
         }
       },
       "onError": "continueRegularOutput",
       "webhookId": "47e392df-fcaa-4147-8c0e-fcd97111a963"
-    },
-    {
-      "id": "0dbd738e-a293-43c5-88d6-1032d9969f26",
-      "name": "Aviso de aprobación",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1344,
-        0
-      ],
-      "parameters": {
-        "resource": "message",
-        "operation": "sendMessage",
-        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
-        "text": "=✅ <b>Respuesta aprobada.</b> En producción se enviaría al cliente desde el help desk.",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
-        }
-      },
-      "onError": "continueRegularOutput",
-      "webhookId": "dfb99e44-5bf1-4c5f-8aef-267dd49b1b3c"
     },
     {
       "id": "26e8b3f8-aa87-427e-bfa0-c79871a7ceae",
@@ -429,28 +473,6 @@
       }
     },
     {
-      "id": "93b03628-99f4-4013-b1d6-b43f2a669e28",
-      "name": "Aviso de edición",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1120,
-        576
-      ],
-      "parameters": {
-        "resource": "message",
-        "operation": "sendMessage",
-        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
-        "text": "=✏️ <b>Edición guardada.</b> La versión corregida queda como texto final.",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
-        }
-      },
-      "onError": "continueRegularOutput",
-      "webhookId": "f04613bc-c805-42c5-96d6-8d382a6a9d42"
-    },
-    {
       "id": "3d327d8b-640e-447f-b453-47409ff38835",
       "name": "Sticky Note 730a1d37",
       "type": "n8n-nodes-base.stickyNote",
@@ -460,11 +482,781 @@
         192
       ],
       "parameters": {
-        "content": "## Aprobación humana\nAtiende los botones del mensaje de triage: Aprobar y Rechazar actualizan la tabla respuestas; Editar pide el texto corregido y lo guarda como texto final. Solo responde a tu usuario de Telegram.",
+        "content": "## Aprobación humana y consultas\nBotones del mensaje de triage: Aprobar y Rechazar actualizan la tabla respuestas; Editar pide el texto corregido y lo guarda como texto final.\nConsultas: escribe «caso 1050 ¿...?» y P5 responde solo con los datos de v_caso_detalle. Solo responde a tu usuario de Telegram.",
         "color": 6,
         "width": 608,
         "height": 224
       }
+    },
+    {
+      "id": "e9bbed4d-daaf-44a2-8c5a-a0cc012664da",
+      "name": "Leer caso",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        784
+      ],
+      "parameters": {
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "={{ $('Interpretar acción').first().json.campo }}",
+              "keyValue": "={{ $('Interpretar acción').first().json.valor }}"
+            }
+          ]
+        },
+        "limit": 1,
+        "matchType": "allFilters",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": false,
+        "tableId": "v_caso_detalle"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "f600b6b2-c213-4d79-85e0-a04837dbf173",
+      "name": "Leer prompt P5",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        784
+      ],
+      "parameters": {
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "nombre",
+              "keyValue": "P5"
+            },
+            {
+              "condition": "eq",
+              "keyName": "activo",
+              "keyValue": "true"
+            }
+          ]
+        },
+        "limit": 1,
+        "matchType": "allFilters",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": false,
+        "tableId": "prompts"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "9a7ef587-ef2d-4d22-8845-6312651d8c93",
+      "name": "Armar llamada P5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        784
+      ],
+      "parameters": {
+        "jsCode": "// P5: responde sobre UN caso solo con la fila de v_caso_detalle (fechas en hora Bogotá).\nconst q = $('Interpretar acción').first().json;\nconst caso = $('Leer caso').first().json || {};\nif (!caso.numero_caso) {\n  return [{ json: { encontrado: false, chat_id: q.chat_id, valor: q.valor } }];\n}\nconst hora = (iso) => iso ? DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\") : null;\nconst datos = { ...caso };\nfor (const k of ['ticket_id', 'respuesta_id', 'escalamiento_id']) delete datos[k];\nfor (const k of Object.keys(datos)) if (k.endsWith('_at')) datos[k] = hora(datos[k]);\nif (datos.incidente) {\n  datos.incidente = { ...datos.incidente, detectado_at: hora(datos.incidente.detectado_at), inicio_at: hora(datos.incidente.inicio_at) };\n}\nif (Array.isArray(datos.correos)) datos.correos = datos.correos.map(c => ({ ...c, enviado_at: hora(c.enviado_at) }));\nconst p = $('Leer prompt P5').first().json;\nreturn [{ json: {\n  encontrado: true, chat_id: q.chat_id, numero_caso: caso.numero_caso, cliente: caso.cliente,\n  body: { model: 'gpt-4o-mini', temperature: 0, messages: [\n    { role: 'system', content: p.texto },\n    { role: 'user', content: 'Pregunta del líder: ' + q.pregunta + '\\n\\nDatos del caso (JSON):\\n' + JSON.stringify(datos) }\n  ] }\n} }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "15a17003-124a-4bb4-a151-82b3791bcff6",
+      "name": "¿Caso encontrado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        784
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.encontrado }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          }
+        }
+      }
+    },
+    {
+      "id": "d814e6ce-5e6f-43c6-8472-d5e8125a7c65",
+      "name": "P5 · Responder sobre el caso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1792,
+        704
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "method": "POST",
+        "nodeCredentialType": "openAiApi",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://api.openai.com/v1/chat/completions"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "3c31d123-8939-4411-b288-ca7381b33107",
+      "name": "Componer respuesta del caso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        704
+      ],
+      "parameters": {
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst a = $('Armar llamada P5').first().json;\nconst texto = $input.first().json.choices[0].message.content;\nreturn [{ json: { chat_id: a.chat_id, mensaje: '🔎 <b>Caso #' + esc(a.numero_caso) + '</b> · ' + esc(a.cliente) + '\\n\\n' + esc(texto) + '\\n\\n<i>Responde a este mensaje para seguir preguntando por el caso.</i>' } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "98c77e6d-10c4-4941-8217-ae02db1a95f0",
+      "name": "Enviar respuesta del caso",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2240,
+        704
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "={{ $json.mensaje }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "eaac1ef0-a7fe-404d-bc70-1d7eba5be105"
+    },
+    {
+      "id": "8b42cafd-f5a0-41eb-b476-c5acfb2575f8",
+      "name": "Caso no encontrado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1792,
+        880
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "=🔎 No encontré el caso <b>{{ $json.valor }}</b> en la base. Revisa el número que aparece en el mensaje del ticket (📌 Caso #...)."
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "918e0e14-643b-4b5c-9755-5fb66577310c"
+    },
+    {
+      "id": "c130f263-ec5d-4483-8829-29edc45b550b",
+      "name": "Cómo preguntar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        976
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "=💬 Para preguntar por un caso escribe su número y tu pregunta. Ejemplos:\n<code>caso 1050 ¿ya se aprobó la respuesta?</code>\n<code>#1047 ¿qué dice la ficha para Ingeniería?</code>\n<code>caso 1048 ¿desde cuándo está ocurriendo?</code>\nTambién puedes responder a un mensaje que tenga «Caso #...»."
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "c583b08d-4bcd-4f28-9ed0-31eb53db1268"
+    },
+    {
+      "id": "6c65e8e7-2c21-4765-a797-796dd8835fc6",
+      "name": "Preparar envío al cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -400
+      ],
+      "parameters": {
+        "jsCode": "// Punto común para Aprobar y Editar: qué respuesta se envía y a qué chat se confirma.\nconst q = $('Interpretar acción').first().json;\nreturn [{ json: { respuesta_id: q.respuesta_id, chat_id: q.chat_id, accion: q.accion } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "4dad26b8-2c62-47f0-b62f-32b68f01e369",
+      "name": "Leer caso para correo",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -400
+      ],
+      "parameters": {
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "respuesta_id",
+              "keyValue": "={{ $json.respuesta_id }}"
+            }
+          ]
+        },
+        "limit": 1,
+        "matchType": "allFilters",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": false,
+        "tableId": "v_caso_detalle"
+      }
+    },
+    {
+      "id": "11636dfe-cc4d-4a00-97f1-3a3b3ec80b74",
+      "name": "Leer destinatarios (cliente)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        -400
+      ],
+      "parameters": {
+        "filterType": "none",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": true,
+        "tableId": "destinatarios_correo"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "5e344f11-b23e-4d3c-95a8-a4ed77ed3b83",
+      "name": "Armar correo al cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        -400
+      ],
+      "parameters": {
+        "jsCode": "// Correo al cliente con el texto final aprobado (o editado). Modo demo: llega al buzón de prueba.\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst q = $('Preparar envío al cliente').first().json;\nconst caso = $('Leer caso para correo').first().json;\nconst dest = Object.fromEntries($('Leer destinatarios (cliente)').all().map(i => [i.json.rol, i.json.correo]));\nconst esCom = caso.respuesta_tipo === 'comunicado';\nconst texto = caso.texto_final || caso.borrador || '';\nconst asunto = '[Caso #' + caso.numero_caso + '] ' + (esCom ? 'Comunicado' : 'Respuesta') + ' de Soporte · ' + caso.asunto;\nconst html = '<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:640px\">' +\n  '<p style=\"color:#888;font-size:12px\">DEMO · En producción este correo iría al contacto de ' + esc(caso.cliente) + ' registrado en el help desk.</p>' +\n  '<p>' + esc(texto).replace(/\\n/g, '<br>') + '</p>' +\n  '<hr style=\"border:none;border-top:1px solid #ddd\"><p style=\"color:#888;font-size:12px\">Caso #' + caso.numero_caso + ' · ' + esc(caso.cliente) + ' (' + esc(caso.pais) + ') · ' +\n  (q.accion === 'guardar_edicion' ? 'Editado y aprobado' : 'Aprobado') + ' por el líder de soporte</p></div>';\nreturn [{ json: { para: dest.cliente, destinatario_real: 'contacto de ' + caso.cliente + ' (help desk)', asunto, html,\n  tipo: esCom ? 'comunicado_cliente' : 'respuesta_cliente', ticket_id: caso.ticket_id, numero_caso: caso.numero_caso,\n  respuesta_id: q.respuesta_id, chat_id: q.chat_id, cliente: caso.cliente, es_comunicado: esCom } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "72268a93-303f-4260-a5fe-4c46748ae98a",
+      "name": "Enviar correo al cliente",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2240,
+        -400
+      ],
+      "parameters": {
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "operation": "send",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Soporte · Copiloto (demo)"
+        },
+        "resource": "message",
+        "sendTo": "={{ $json.para }}",
+        "subject": "={{ $json.asunto }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "9acc8fed-7917-481a-8225-aa97b2d90301"
+    },
+    {
+      "id": "3fddac1a-d2d3-471b-bde2-8e6be3ead308",
+      "name": "Registrar correo al cliente",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        -400
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tipo",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.tipo }}"
+            },
+            {
+              "fieldId": "ticket_id",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.ticket_id }}"
+            },
+            {
+              "fieldId": "numero_caso",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.numero_caso }}"
+            },
+            {
+              "fieldId": "respuesta_id",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.respuesta_id }}"
+            },
+            {
+              "fieldId": "destinatario",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.para }}"
+            },
+            {
+              "fieldId": "destinatario_real",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.destinatario_real }}"
+            },
+            {
+              "fieldId": "asunto",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.asunto }}"
+            },
+            {
+              "fieldId": "cuerpo",
+              "fieldValue": "={{ $('Armar correo al cliente').first().json.html }}"
+            },
+            {
+              "fieldId": "estado",
+              "fieldValue": "={{ $json.id ? 'enviado' : 'error' }}"
+            },
+            {
+              "fieldId": "gmail_id",
+              "fieldValue": "={{ $json.id || '' }}"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $json.id ? '' : String(($json.error && ($json.error.message || $json.error)) || 'sin respuesta de Gmail') }}"
+            }
+          ]
+        },
+        "operation": "create",
+        "resource": "row",
+        "tableId": "correos_enviados"
+      }
+    },
+    {
+      "id": "807367ec-5ff6-41f2-b6da-c3af6286004b",
+      "name": "¿Correo al cliente enviado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2688,
+        -400
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.estado }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "enviado"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        }
+      }
+    },
+    {
+      "id": "e484ad9d-3bb3-45d6-a39b-02c9263d5912",
+      "name": "Marcar respuesta enviada",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        -480
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "enviado_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "id",
+              "keyValue": "={{ $('Armar correo al cliente').first().json.respuesta_id }}"
+            }
+          ]
+        },
+        "matchType": "allFilters",
+        "operation": "update",
+        "resource": "row",
+        "tableId": "respuestas"
+      }
+    },
+    {
+      "id": "295de65a-7df3-48da-a5bf-0d5f57c0dd1d",
+      "name": "Aviso de correo al cliente",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3136,
+        -480
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $('Armar correo al cliente').first().json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "=📧 <b>{{ $('Armar correo al cliente').first().json.es_comunicado ? 'Comunicado enviado' : 'Respuesta enviada' }} por correo al cliente</b>\n📌 Caso #{{ $('Armar correo al cliente').first().json.numero_caso }} · {{ $('Armar correo al cliente').first().json.cliente }}\nPara: {{ $('Armar correo al cliente').first().json.para }} (demo; en producción: {{ $('Armar correo al cliente').first().json.destinatario_real }})\nAsunto: {{ $('Armar correo al cliente').first().json.asunto }}\nHora: {{ $now.setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\") }}\nQueda registrado en correos_enviados."
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "fc5f5561-9c5d-413c-8d93-35e282ac0f86"
+    },
+    {
+      "id": "a2642fd8-1ce7-43a7-b558-dccfff0a702f",
+      "name": "Aviso de correo fallido",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2912,
+        -304
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $('Armar correo al cliente').first().json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "=⚠️ La respuesta del caso #{{ $('Armar correo al cliente').first().json.numero_caso }} quedó aprobada, pero <b>el correo no salió</b>.\nMotivo: {{ $json.error }}\nQuedó registrado en correos_enviados con estado error."
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "121215b7-3c28-45fb-af75-743c19e6af90"
+    },
+    {
+      "id": "7422a70c-78c7-4a4d-b539-aae166e7c2c1",
+      "name": "Confirmar escalamiento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        1200
+      ],
+      "parameters": {
+        "additionalFields": {
+          "text": "Enviando la ficha a Ingeniería…"
+        },
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar acción').first().json.query_id }}",
+        "resource": "callback"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "37478619-4113-438e-b314-ba329094c437"
+    },
+    {
+      "id": "4bcb097c-46ed-4b69-b7d1-d50e53eb1bfd",
+      "name": "Leer caso del escalamiento",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        1200
+      ],
+      "parameters": {
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "escalamiento_id",
+              "keyValue": "={{ $('Interpretar acción').first().json.escalamiento_id }}"
+            }
+          ]
+        },
+        "limit": 1,
+        "matchType": "allFilters",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": false,
+        "tableId": "v_caso_detalle"
+      }
+    },
+    {
+      "id": "78300e45-0e1e-4e6f-8973-35ae2878eca4",
+      "name": "Leer destinatarios (Ingeniería)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        1200
+      ],
+      "parameters": {
+        "filterType": "none",
+        "operation": "getAll",
+        "resource": "row",
+        "returnAll": true,
+        "tableId": "destinatarios_correo"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "45f6477e-3f9a-4670-a4b1-ec7ea4d23c2d",
+      "name": "Armar correo a Ingeniería",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        1200
+      ],
+      "parameters": {
+        "jsCode": "// Correo a Ingeniería con la ficha P3 y el contexto del caso.\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst hora = (iso) => iso ? DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\") : '';\nconst q = $('Interpretar acción').first().json;\nconst caso = $('Leer caso del escalamiento').first().json;\nconst dest = Object.fromEntries($('Leer destinatarios (Ingeniería)').all().map(i => [i.json.rol, i.json.correo]));\nconst ficha = caso.ficha && typeof caso.ficha === 'object' ? caso.ficha : {};\nconst etiqueta = (k) => k.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());\nconst valor = (v) => Array.isArray(v) ? '<ul>' + v.map(x => '<li>' + esc(typeof x === 'object' ? JSON.stringify(x) : x) + '</li>').join('') + '</ul>' : esc(typeof v === 'object' ? JSON.stringify(v) : v);\nconst filas = Object.entries(ficha).map(([k, v]) => '<tr><td style=\"padding:6px 10px;border:1px solid #ddd;font-weight:bold;vertical-align:top\">' + esc(etiqueta(k)) + '</td><td style=\"padding:6px 10px;border:1px solid #ddd\">' + valor(v) + '</td></tr>').join('');\nconst asunto = '[Escalamiento ' + caso.severidad + '] Caso #' + caso.numero_caso + ' · ' + (ficha.titulo || caso.asunto);\nconst html = '<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:720px\">' +\n  '<p><b>Caso #' + caso.numero_caso + '</b> · ' + esc(caso.cliente) + ' (' + esc(caso.pais) + ') · ' + esc(caso.producto) + ' · ' + esc(caso.ambiente) + '<br>' +\n  'Severidad: <b>' + esc(caso.severidad) + '</b> · Origen: ' + esc(caso.origen_falla) + ' · Recibido: ' + esc(hora(caso.recibido_at)) + ' (hora Bogotá)</p>' +\n  '<p><b>Reporte del cliente</b><br>' + esc(caso.cuerpo).replace(/\\n/g, '<br>') + '</p>' +\n  '<p><b>Ficha de escalamiento</b></p><table style=\"border-collapse:collapse;font-size:13px\">' + filas + '</table>' +\n  '<p style=\"color:#888;font-size:12px\">Escalamiento confirmado por el líder de soporte desde Telegram. DEMO: datos sintéticos.</p></div>';\nreturn [{ json: { para: dest.ingenieria, asunto, html, ticket_id: caso.ticket_id, numero_caso: caso.numero_caso,\n  escalamiento_id: q.escalamiento_id, chat_id: q.chat_id, cliente: caso.cliente, severidad: caso.severidad } }];",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "f51c8baf-4dda-4440-986e-2fafbfdcddec",
+      "name": "Enviar correo a Ingeniería",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1792,
+        1200
+      ],
+      "parameters": {
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "operation": "send",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Soporte · Copiloto (demo)"
+        },
+        "resource": "message",
+        "sendTo": "={{ $json.para }}",
+        "subject": "={{ $json.asunto }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "6369e000-53b6-47fb-890e-36973e864c77"
+    },
+    {
+      "id": "5e3e179b-40c5-4392-9edd-9ff722271ecc",
+      "name": "Registrar correo a Ingeniería",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        1200
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tipo",
+              "fieldValue": "escalamiento_ingenieria"
+            },
+            {
+              "fieldId": "ticket_id",
+              "fieldValue": "={{ $('Armar correo a Ingeniería').first().json.ticket_id }}"
+            },
+            {
+              "fieldId": "numero_caso",
+              "fieldValue": "={{ $('Armar correo a Ingeniería').first().json.numero_caso }}"
+            },
+            {
+              "fieldId": "escalamiento_id",
+              "fieldValue": "={{ $('Armar correo a Ingeniería').first().json.escalamiento_id }}"
+            },
+            {
+              "fieldId": "destinatario",
+              "fieldValue": "={{ $('Armar correo a Ingeniería').first().json.para }}"
+            },
+            {
+              "fieldId": "destinatario_real",
+              "fieldValue": "Ingeniería (guardia)"
+            },
+            {
+              "fieldId": "asunto",
+              "fieldValue": "={{ $('Armar correo a Ingeniería').first().json.asunto }}"
+            },
+            {
+              "fieldId": "cuerpo",
+              "fieldValue": "={{ $('Armar correo a Ingeniería').first().json.html }}"
+            },
+            {
+              "fieldId": "estado",
+              "fieldValue": "={{ $json.id ? 'enviado' : 'error' }}"
+            },
+            {
+              "fieldId": "gmail_id",
+              "fieldValue": "={{ $json.id || '' }}"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $json.id ? '' : String(($json.error && ($json.error.message || $json.error)) || 'sin respuesta de Gmail') }}"
+            }
+          ]
+        },
+        "operation": "create",
+        "resource": "row",
+        "tableId": "correos_enviados"
+      }
+    },
+    {
+      "id": "28a47afb-6418-4f41-b071-e08612bad138",
+      "name": "¿Correo a Ingeniería enviado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        1200
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.estado }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "enviado"
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        }
+      }
+    },
+    {
+      "id": "42caeb00-193c-4bb9-998b-fd741536c436",
+      "name": "Marcar escalamiento confirmado",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        1120
+      ],
+      "parameters": {
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "en_revision"
+            },
+            {
+              "fieldId": "confirmado_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "id",
+              "keyValue": "={{ $('Armar correo a Ingeniería').first().json.escalamiento_id }}"
+            }
+          ]
+        },
+        "matchType": "allFilters",
+        "operation": "update",
+        "resource": "row",
+        "tableId": "escalamientos"
+      }
+    },
+    {
+      "id": "4bbc65eb-861f-4fe5-bb2b-262e7ebc7363",
+      "name": "Aviso de escalamiento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2688,
+        1120
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $('Armar correo a Ingeniería').first().json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "=🛠 <b>Escalamiento confirmado y enviado por correo a Ingeniería</b>\n📌 Caso #{{ $('Armar correo a Ingeniería').first().json.numero_caso }} · {{ $('Armar correo a Ingeniería').first().json.cliente }} · {{ $('Armar correo a Ingeniería').first().json.severidad }}\nPara: {{ $('Armar correo a Ingeniería').first().json.para }}\nAsunto: {{ $('Armar correo a Ingeniería').first().json.asunto }}\nHora: {{ $now.setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\") }}\nEstado del escalamiento: en revisión. Queda registrado en correos_enviados."
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "357cc781-eecd-4be2-8742-94d9c8e5d645"
+    },
+    {
+      "id": "c51ba93f-bf25-4faa-b421-3a08d88c0d35",
+      "name": "Aviso de escalamiento fallido",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2464,
+        1296
+      ],
+      "parameters": {
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        },
+        "chatId": "={{ $('Armar correo a Ingeniería').first().json.chat_id }}",
+        "operation": "sendMessage",
+        "resource": "message",
+        "text": "=⚠️ No se pudo enviar el correo de escalamiento del caso #{{ $('Armar correo a Ingeniería').first().json.numero_caso }}.\nMotivo: {{ $json.error }}\nEl escalamiento sigue abierto; vuelve a tocar el botón cuando el correo esté disponible."
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "2a9bf3ba-9209-4e90-8142-91951d1520ca"
     }
   ],
   "connections": {
@@ -479,33 +1271,11 @@
         ]
       ]
     },
-    "Interpretar acción": {
-      "main": [
-        [
-          {
-            "node": "Leer respuesta",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Leer respuesta": {
-      "main": [
-        [
-          {
-            "node": "Según el botón",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Según el botón": {
       "main": [
         [
           {
-            "node": "Marcar aprobada",
+            "node": "Leer respuesta",
             "type": "main",
             "index": 0
           }
@@ -530,6 +1300,27 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Leer caso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cómo preguntar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmar escalamiento",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -538,17 +1329,6 @@
         [
           {
             "node": "Confirmar aprobación",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Confirmar aprobación": {
-      "main": [
-        [
-          {
-            "node": "Aviso de aprobación",
             "type": "main",
             "index": 0
           }
@@ -588,11 +1368,307 @@
         ]
       ]
     },
+    "Interpretar acción": {
+      "main": [
+        [
+          {
+            "node": "Según el botón",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer respuesta": {
+      "main": [
+        [
+          {
+            "node": "Marcar aprobada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer caso": {
+      "main": [
+        [
+          {
+            "node": "Leer prompt P5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer prompt P5": {
+      "main": [
+        [
+          {
+            "node": "Armar llamada P5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar llamada P5": {
+      "main": [
+        [
+          {
+            "node": "¿Caso encontrado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Caso encontrado?": {
+      "main": [
+        [
+          {
+            "node": "P5 · Responder sobre el caso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Caso no encontrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "P5 · Responder sobre el caso": {
+      "main": [
+        [
+          {
+            "node": "Componer respuesta del caso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Componer respuesta del caso": {
+      "main": [
+        [
+          {
+            "node": "Enviar respuesta del caso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar aprobación": {
+      "main": [
+        [
+          {
+            "node": "Preparar envío al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Guardar edición": {
       "main": [
         [
           {
-            "node": "Aviso de edición",
+            "node": "Preparar envío al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar envío al cliente": {
+      "main": [
+        [
+          {
+            "node": "Leer caso para correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer caso para correo": {
+      "main": [
+        [
+          {
+            "node": "Leer destinatarios (cliente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer destinatarios (cliente)": {
+      "main": [
+        [
+          {
+            "node": "Armar correo al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar correo al cliente": {
+      "main": [
+        [
+          {
+            "node": "Enviar correo al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar correo al cliente": {
+      "main": [
+        [
+          {
+            "node": "Registrar correo al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar correo al cliente": {
+      "main": [
+        [
+          {
+            "node": "¿Correo al cliente enviado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Correo al cliente enviado?": {
+      "main": [
+        [
+          {
+            "node": "Marcar respuesta enviada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aviso de correo fallido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar respuesta enviada": {
+      "main": [
+        [
+          {
+            "node": "Aviso de correo al cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar escalamiento": {
+      "main": [
+        [
+          {
+            "node": "Leer caso del escalamiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer caso del escalamiento": {
+      "main": [
+        [
+          {
+            "node": "Leer destinatarios (Ingeniería)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer destinatarios (Ingeniería)": {
+      "main": [
+        [
+          {
+            "node": "Armar correo a Ingeniería",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar correo a Ingeniería": {
+      "main": [
+        [
+          {
+            "node": "Enviar correo a Ingeniería",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar correo a Ingeniería": {
+      "main": [
+        [
+          {
+            "node": "Registrar correo a Ingeniería",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar correo a Ingeniería": {
+      "main": [
+        [
+          {
+            "node": "¿Correo a Ingeniería enviado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Correo a Ingeniería enviado?": {
+      "main": [
+        [
+          {
+            "node": "Marcar escalamiento confirmado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aviso de escalamiento fallido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar escalamiento confirmado": {
+      "main": [
+        [
+          {
+            "node": "Aviso de escalamiento",
             "type": "main",
             "index": 0
           }
@@ -601,8 +1677,6 @@
     }
   },
   "settings": {
-    "executionOrder": "v1",
-    "timezone": "America/Bogota"
-  },
-  "pinData": {}
+    "executionOrder": "v1"
+  }
 }
