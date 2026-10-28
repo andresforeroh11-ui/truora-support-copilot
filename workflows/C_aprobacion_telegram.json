@@ -1,0 +1,608 @@
+{
+  "name": "C · Aprobación de borradores (Telegram)",
+  "nodes": [
+    {
+      "id": "c843683c-c4fd-42e2-b5e4-24b971e17657",
+      "name": "Botones y respuestas de Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        288
+      ],
+      "parameters": {
+        "updates": [
+          "callback_query",
+          "message"
+        ],
+        "additionalFields": {
+          "userIds": "TU_USER_ID"
+        }
+      },
+      "webhookId": "0ee9177f-bfb2-4bae-903d-ccd262ad4920"
+    },
+    {
+      "id": "1fb504ce-eaff-4183-92e7-5b9589dfc040",
+      "name": "Interpretar acción",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        288
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Interpreta el botón (ap/ed/re) o la respuesta con el texto editado.\nconst u = $input.first().json;\nif (u.callback_query) {\n  const cq = u.callback_query;\n  const [pref, id] = String(cq.data || '').split(':');\n  const mapa = { ap: 'aprobar', ed: 'editar', re: 'rechazar' };\n  return [{ json: { accion: mapa[pref] || 'ignorar', respuesta_id: id, query_id: cq.id, chat_id: cq.message.chat.id } }];\n}\nconst m = u.message;\nconst ref = m && m.reply_to_message && String(m.reply_to_message.text || '').match(/ID: ([0-9a-f-]{36})/);\nif (ref && m.text) {\n  return [{ json: { accion: 'guardar_edicion', respuesta_id: ref[1], texto: m.text, query_id: null, chat_id: m.chat.id } }];\n}\nreturn [];"
+      }
+    },
+    {
+      "id": "461e3c21-f634-4dce-8a2c-84d3772f373a",
+      "name": "Leer respuesta",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        288
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "respuestas",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.respuesta_id }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d005fead-89b8-411d-a74b-c80e7d0da584",
+      "name": "Según el botón",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        672,
+        256
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "aprobar",
+              "renameOutput": true,
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "aprobar"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "rechazar",
+              "renameOutput": true,
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "rechazar"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "editar",
+              "renameOutput": true,
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "editar"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "guardar_edicion",
+              "renameOutput": true,
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Interpretar acción').first().json.accion }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "guardar_edicion"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b4a95f66-af59-4a0d-a15d-d92fe6b0539e",
+      "name": "Marcar aprobada",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "respuestas",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Interpretar acción').first().json.respuesta_id }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "aprobado"
+            },
+            {
+              "fieldId": "texto_final",
+              "fieldValue": "={{ $('Leer respuesta').first().json.borrador }}"
+            },
+            {
+              "fieldId": "revisado_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "67ed96a8-51f7-4057-8159-b0c3ba43ef5a",
+      "name": "Confirmar aprobación",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar acción').first().json.query_id }}",
+        "additionalFields": {
+          "text": "Respuesta aprobada ✅"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "47e392df-fcaa-4147-8c0e-fcd97111a963"
+    },
+    {
+      "id": "0dbd738e-a293-43c5-88d6-1032d9969f26",
+      "name": "Aviso de aprobación",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
+        "text": "=✅ <b>Respuesta aprobada.</b> En producción se enviaría al cliente desde el help desk.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "dfb99e44-5bf1-4c5f-8aef-267dd49b1b3c"
+    },
+    {
+      "id": "26e8b3f8-aa87-427e-bfa0-c79871a7ceae",
+      "name": "Marcar rechazada",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "respuestas",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Interpretar acción').first().json.respuesta_id }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "rechazado"
+            },
+            {
+              "fieldId": "texto_final",
+              "fieldValue": "={{ '' }}"
+            },
+            {
+              "fieldId": "revisado_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "903e019a-4284-40b0-85a3-04ab3abad85e",
+      "name": "Confirmar rechazo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        192
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar acción').first().json.query_id }}",
+        "additionalFields": {
+          "text": "Borrador rechazado"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "7e725296-a99e-44e8-b453-cc48d7754015"
+    },
+    {
+      "id": "76a2e369-3601-461e-b564-d3e5907e3cf4",
+      "name": "Aviso de rechazo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        192
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
+        "text": "=❌ <b>Borrador rechazado.</b> Queda registrado para mejorar el prompt P2.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "63bab5fd-16bf-402b-a758-19f2959758c6"
+    },
+    {
+      "id": "ae52ff11-c8f0-4a61-8dc7-e055f8bdbeb9",
+      "name": "Confirmar edición",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        384
+      ],
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar acción').first().json.query_id }}",
+        "additionalFields": {
+          "text": "Escribe el texto corregido"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "5bcab4ad-1a07-4006-8cae-ccb7643af67c"
+    },
+    {
+      "id": "c9bd88f9-c598-4669-bb01-48623eab6c34",
+      "name": "Pedir texto corregido",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        384
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
+        "text": "=✏️ Responde a ESTE mensaje con el texto corregido.\nID: {{ $('Interpretar acción').first().json.respuesta_id }}",
+        "replyMarkup": "forceReply",
+        "forceReply": {
+          "force_reply": true
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "4f7f82d1-894d-4530-9a7c-ded0effaabd4"
+    },
+    {
+      "id": "d6b8787b-ccb7-4ba7-b58d-ffa1ed81ba63",
+      "name": "Guardar edición",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        576
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "respuestas",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Interpretar acción').first().json.respuesta_id }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "editado"
+            },
+            {
+              "fieldId": "texto_final",
+              "fieldValue": "={{ $('Interpretar acción').first().json.texto }}"
+            },
+            {
+              "fieldId": "revisado_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "93b03628-99f4-4013-b1d6-b43f2a669e28",
+      "name": "Aviso de edición",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        576
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Interpretar acción').first().json.chat_id }}",
+        "text": "=✏️ <b>Edición guardada.</b> La versión corregida queda como texto final.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "f04613bc-c805-42c5-96d6-8d382a6a9d42"
+    },
+    {
+      "id": "3d327d8b-640e-447f-b453-47409ff38835",
+      "name": "Sticky Note 730a1d37",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        192
+      ],
+      "parameters": {
+        "content": "## Aprobación humana\nAtiende los botones del mensaje de triage: Aprobar y Rechazar actualizan la tabla respuestas; Editar pide el texto corregido y lo guarda como texto final. Solo responde a tu usuario de Telegram.",
+        "color": 6,
+        "width": 608,
+        "height": 224
+      }
+    }
+  ],
+  "connections": {
+    "Botones y respuestas de Telegram": {
+      "main": [
+        [
+          {
+            "node": "Interpretar acción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar acción": {
+      "main": [
+        [
+          {
+            "node": "Leer respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer respuesta": {
+      "main": [
+        [
+          {
+            "node": "Según el botón",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Según el botón": {
+      "main": [
+        [
+          {
+            "node": "Marcar aprobada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar rechazada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmar edición",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar edición",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar aprobada": {
+      "main": [
+        [
+          {
+            "node": "Confirmar aprobación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar aprobación": {
+      "main": [
+        [
+          {
+            "node": "Aviso de aprobación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar rechazada": {
+      "main": [
+        [
+          {
+            "node": "Confirmar rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar rechazo": {
+      "main": [
+        [
+          {
+            "node": "Aviso de rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar edición": {
+      "main": [
+        [
+          {
+            "node": "Pedir texto corregido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar edición": {
+      "main": [
+        [
+          {
+            "node": "Aviso de edición",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "pinData": {}
+}

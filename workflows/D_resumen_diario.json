@@ -1,0 +1,314 @@
+{
+  "name": "D · Resumen diario del líder (P4)",
+  "nodes": [
+    {
+      "id": "2300b98b-93a6-4ba9-b298-1694166e0eb3",
+      "name": "Lunes a viernes 7:24",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "triggerAtHour": 7,
+              "triggerAtMinute": 24
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5bb3d227-7d58-464f-8cda-0278b79cd01c",
+      "name": "Leer métricas 24 h",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        272,
+        224
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "v_resumen_diario",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "none"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "9514673f-8762-4d78-bf1f-f602976314ce",
+      "name": "Generar ahora (demo)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "57c16dea-ac05-42cb-b1a9-3f1cb43eaa58",
+      "name": "Leer prompt P4",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        496,
+        224
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "prompts",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "nombre",
+              "condition": "eq",
+              "keyValue": "P4"
+            },
+            {
+              "keyName": "activo",
+              "condition": "eq",
+              "keyValue": "true"
+            }
+          ]
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "48ef75f7-7a43-4e16-b3dd-b7b6ea8a832d",
+      "name": "Armar llamada P4",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        224
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Las cifras vienen de SQL; la IA solo las interpreta.\nconst m = $('Leer métricas 24 h').first().json;\nconst p = $('Leer prompt P4').first().json;\nreturn [{ json: { metricas: m, body: { model: 'gpt-4o-mini', temperature: 0.2, messages: [ { role: 'system', content: p.texto }, { role: 'user', content: JSON.stringify(m) } ] } } }];"
+      }
+    },
+    {
+      "id": "8e749da8-892a-4630-bfcd-fdf1539de254",
+      "name": "P4 · Resumen del líder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        944,
+        224
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "c50fafe1-cba8-4f95-bca9-2a13b4681197",
+      "name": "Guardar resumen",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        224
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "resumenes_diarios",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "metricas",
+              "fieldValue": "={{ $('Armar llamada P4').first().json.metricas }}"
+            },
+            {
+              "fieldId": "texto",
+              "fieldValue": "={{ $json.choices[0].message.content }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f80efa5f-f90d-4189-b4d7-12e0e9f1bb56",
+      "name": "Componer resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        224
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst texto = $('P4 · Resumen del líder').first().json.choices[0].message.content;\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet cuerpo = esc(texto);\nfor (const t of titulos) cuerpo = cuerpo.split(t).join('<b>' + t + '</b>');\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nreturn [{ json: { mensaje: '☀️ <b>Resumen de soporte · ' + fecha + '</b>\\n\\n' + cuerpo } }];"
+      }
+    },
+    {
+      "id": "34de1d68-65e8-4d1c-baa0-3b2d6e572720",
+      "name": "Enviar resumen",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        96
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "TU_CHAT_ID",
+        "text": "={{ $json.mensaje }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "webhookId": "6ed51dc7-1df9-47c6-9932-f6856acd74b4"
+    },
+    {
+      "id": "fdeab72f-e23f-4693-b216-2e7edb7c7beb",
+      "name": "Sticky Note 44acf059",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -96
+      ],
+      "parameters": {
+        "content": "## Resumen diario del líder (P4)\nLa vista SQL v_resumen_diario calcula tickets, SLA en riesgo, incidentes, patrones, calidad de borradores y costo. P4 solo interpreta y sugiere destino para cada patrón (Producto, Ingeniería, KB o comunicación).",
+        "color": 4,
+        "width": 432,
+        "height": 448
+      }
+    }
+  ],
+  "connections": {
+    "Lunes a viernes 7:24": {
+      "main": [
+        [
+          {
+            "node": "Leer métricas 24 h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer métricas 24 h": {
+      "main": [
+        [
+          {
+            "node": "Leer prompt P4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar ahora (demo)": {
+      "main": [
+        [
+          {
+            "node": "Leer métricas 24 h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer prompt P4": {
+      "main": [
+        [
+          {
+            "node": "Armar llamada P4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar llamada P4": {
+      "main": [
+        [
+          {
+            "node": "P4 · Resumen del líder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "P4 · Resumen del líder": {
+      "main": [
+        [
+          {
+            "node": "Guardar resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar resumen": {
+      "main": [
+        [
+          {
+            "node": "Componer resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Componer resumen": {
+      "main": [
+        [
+          {
+            "node": "Enviar resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "pinData": {}
+}

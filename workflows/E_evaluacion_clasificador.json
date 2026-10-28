@@ -1,0 +1,501 @@
+{
+  "name": "E · Evaluación del clasificador (30 tickets etiquetados)",
+  "nodes": [
+    {
+      "id": "a16418d0-03b5-4236-b1bd-6b558f198fb7",
+      "name": "Correr evaluación",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b5bbd699-d7b8-4ff2-a141-43d4cfe6dbd8",
+      "name": "Configuración",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Cambia CORRIDA antes de cada ejecución (1, 2, 3...). PROMPT_VERSION debe existir en la tabla prompts.\nreturn [{ json: { corrida: 2, prompt_version: 'P1-v3', modelo: 'gpt-4o-mini' } }];"
+      }
+    },
+    {
+      "id": "0b4614cb-e801-4c0b-ab54-f2c7e804ec8e",
+      "name": "Leer prompt",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "prompts",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "version",
+              "condition": "eq",
+              "keyValue": "={{ $json.prompt_version }}"
+            }
+          ]
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "97f9e4af-1c26-465f-9e33-36667c8cbc47",
+      "name": "Leer set de prueba",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "tickets",
+        "returnAll": true,
+        "orderBy": "ticket_ref",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "es_set_prueba",
+              "condition": "eq",
+              "keyValue": "true"
+            },
+            {
+              "keyName": "etiqueta_revisada",
+              "condition": "eq",
+              "keyValue": "true"
+            }
+          ]
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "4ccbe3c7-8241-4c66-8fb0-8d191d7f4514",
+      "name": "Armar llamada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Una llamada a OpenAI por ticket, con el prompt leído desde Supabase.\nconst cfg = $('Configuración').first().json;\nconst prompt = $('Leer prompt').first().json.texto;\nconst t = $json;\nreturn { json: {\n  inicio: Date.now(),\n  body: {\n    model: cfg.modelo,\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: prompt },\n      { role: 'user', content: 'País del cliente (formulario): ' + t.pais + '\\nTicket: ' + t.asunto + ' — ' + t.cuerpo }\n    ]\n  }\n}};"
+      }
+    },
+    {
+      "id": "56e6cb16-0b4d-4fe4-a03c-815973a1c589",
+      "name": "P1 · Clasificar (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1168,
+        128
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "8d3430ee-a262-42b4-a07c-e623e031c5df",
+      "name": "Validar JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "// Valida el JSON contra el esquema y arma la fila de `clasificaciones`.\nconst r = $json;\nconst ticket = $('Leer set de prueba').item.json;\nconst req = $('Armar llamada').item.json;\nconst cfg = $('Configuración').first().json;\nconst ENUM = {\n  severidad: ['P1','P2','P3','P4'],\n  origen_falla: ['truora','fuente_externa_gobierno','meta_whatsapp','integracion_cliente','usuario_final','no_aplica','indeterminado'],\n  accion_sugerida: ['escalar_ingenieria','comunicado_proactivo','responder_con_kb','pedir_datos'],\n};\nlet c = {}, valido = true, error = null;\ntry { c = JSON.parse(r.choices[0].message.content); }\ncatch (e) { valido = false; error = 'JSON inválido: ' + e.message; }\nfor (const [campo, permitidos] of Object.entries(ENUM)) {\n  if (!permitidos.includes(c[campo])) { valido = false; error = (error ? error + '; ' : '') + campo + ' fuera de esquema: ' + c[campo]; c[campo] = null; }\n}\nconst conf = Number(c.confianza);\nreturn { json: {\n  ticket_id: ticket.id,\n  modelo: cfg.modelo,\n  prompt_version: cfg.prompt_version,\n  producto: c.producto ?? null,\n  pais: c.pais ?? null,\n  ambiente: c.ambiente ?? null,\n  tipo: c.tipo ?? null,\n  origen_falla: c.origen_falla,\n  codigo_motivo: c.codigo_motivo ?? null,\n  severidad: c.severidad,\n  confianza: Number.isFinite(conf) ? Math.min(Math.max(conf, 0), 1) : null,\n  justificacion: c.justificacion ?? null,\n  datos_faltantes: Array.isArray(c.datos_faltantes) ? c.datos_faltantes : [],\n  requiere_escalamiento: c.requiere_escalamiento === true,\n  accion_sugerida: c.accion_sugerida,\n  json_crudo: c,\n  json_valido: valido,\n  error,\n  latencia_ms: Date.now() - req.inicio,\n  tokens_entrada: r.usage?.prompt_tokens ?? null,\n  tokens_salida: r.usage?.completion_tokens ?? null,\n}};"
+      }
+    },
+    {
+      "id": "f9b84123-ade2-45a2-94b7-db8b11d23b22",
+      "name": "Guardar clasificación",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1472,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "clasificaciones",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "ticket_id",
+              "fieldValue": "={{ $json.ticket_id }}"
+            },
+            {
+              "fieldId": "modelo",
+              "fieldValue": "={{ $json.modelo }}"
+            },
+            {
+              "fieldId": "prompt_version",
+              "fieldValue": "={{ $json.prompt_version }}"
+            },
+            {
+              "fieldId": "producto",
+              "fieldValue": "={{ $json.producto }}"
+            },
+            {
+              "fieldId": "pais",
+              "fieldValue": "={{ $json.pais }}"
+            },
+            {
+              "fieldId": "ambiente",
+              "fieldValue": "={{ $json.ambiente }}"
+            },
+            {
+              "fieldId": "tipo",
+              "fieldValue": "={{ $json.tipo }}"
+            },
+            {
+              "fieldId": "origen_falla",
+              "fieldValue": "={{ $json.origen_falla }}"
+            },
+            {
+              "fieldId": "codigo_motivo",
+              "fieldValue": "={{ $json.codigo_motivo }}"
+            },
+            {
+              "fieldId": "severidad",
+              "fieldValue": "={{ $json.severidad }}"
+            },
+            {
+              "fieldId": "confianza",
+              "fieldValue": "={{ $json.confianza }}"
+            },
+            {
+              "fieldId": "justificacion",
+              "fieldValue": "={{ $json.justificacion }}"
+            },
+            {
+              "fieldId": "datos_faltantes",
+              "fieldValue": "={{ $json.datos_faltantes }}"
+            },
+            {
+              "fieldId": "requiere_escalamiento",
+              "fieldValue": "={{ $json.requiere_escalamiento }}"
+            },
+            {
+              "fieldId": "accion_sugerida",
+              "fieldValue": "={{ $json.accion_sugerida }}"
+            },
+            {
+              "fieldId": "json_crudo",
+              "fieldValue": "={{ $json.json_crudo }}"
+            },
+            {
+              "fieldId": "json_valido",
+              "fieldValue": "={{ $json.json_valido }}"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $json.error }}"
+            },
+            {
+              "fieldId": "latencia_ms",
+              "fieldValue": "={{ $json.latencia_ms }}"
+            },
+            {
+              "fieldId": "tokens_entrada",
+              "fieldValue": "={{ $json.tokens_entrada }}"
+            },
+            {
+              "fieldId": "tokens_salida",
+              "fieldValue": "={{ $json.tokens_salida }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "72aae2a3-7f50-47d1-a26e-0956c4ad4a7b",
+      "name": "Guardar evaluación",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "evaluaciones",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "corrida",
+              "fieldValue": "={{ $('Configuración').first().json.corrida }}"
+            },
+            {
+              "fieldId": "prompt_version",
+              "fieldValue": "={{ $('Configuración').first().json.prompt_version }}"
+            },
+            {
+              "fieldId": "ticket_id",
+              "fieldValue": "={{ $json.ticket_id }}"
+            },
+            {
+              "fieldId": "clasificacion_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "severidad_esperada",
+              "fieldValue": "={{ $('Leer set de prueba').item.json.etiqueta_severidad }}"
+            },
+            {
+              "fieldId": "severidad_obtenida",
+              "fieldValue": "={{ $json.severidad }}"
+            },
+            {
+              "fieldId": "origen_esperado",
+              "fieldValue": "={{ $('Leer set de prueba').item.json.etiqueta_origen }}"
+            },
+            {
+              "fieldId": "origen_obtenido",
+              "fieldValue": "={{ $json.origen_falla }}"
+            },
+            {
+              "fieldId": "escalamiento_innecesario",
+              "fieldValue": "={{ $json.requiere_escalamiento === true && !['truora','indeterminado'].includes($('Leer set de prueba').item.json.etiqueta_origen) }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8673da75-41c6-4e54-833e-0834ccfaf79a",
+      "name": "Leer métricas",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "v_metricas_corrida",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "corrida",
+              "condition": "eq",
+              "keyValue": "={{ $('Configuración').first().json.corrida }}"
+            }
+          ]
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "f387fc7b-a7e5-40ac-a391-8a21189d3577",
+      "name": "Resumen a Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1952,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "TU_CHAT_ID",
+        "text": "=📊 <b>Evaluación · corrida {{ $json.corrida }}</b> ({{ $json.prompt_version }})\nTickets: {{ $json.tickets }}\nPrecisión severidad: {{ $json.precision_severidad_pct }}%\nPrecisión origen: {{ $json.precision_origen_pct }}%\nP1 no detectados: {{ $json.p1_no_detectados }}\nEscalamientos innecesarios: {{ $json.escalamientos_innecesarios }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "webhookId": "e787c4c1-bed1-4ac5-866b-40b1e5d3c1f8"
+    },
+    {
+      "id": "2be88bfa-7fbb-4568-8657-082d8dff350e",
+      "name": "Sticky Note 7e6bdce2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -96
+      ],
+      "parameters": {
+        "content": "## Evaluación del clasificador P1\nLee el prompt versionado y los 30 tickets etiquetados, clasifica cada uno y guarda el resultado en `evaluaciones`. La vista `v_metricas_corrida` calcula la precisión en SQL: la IA no se califica a sí misma.\n**Antes de cada corrida cambia el número en el nodo Configuración.**",
+        "color": 5,
+        "width": 832,
+        "height": 224
+      }
+    }
+  ],
+  "connections": {
+    "Correr evaluación": {
+      "main": [
+        [
+          {
+            "node": "Configuración",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuración": {
+      "main": [
+        [
+          {
+            "node": "Leer prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer prompt": {
+      "main": [
+        [
+          {
+            "node": "Leer set de prueba",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer set de prueba": {
+      "main": [
+        [
+          {
+            "node": "Armar llamada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar llamada": {
+      "main": [
+        [
+          {
+            "node": "P1 · Clasificar (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "P1 · Clasificar (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Validar JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar JSON": {
+      "main": [
+        [
+          {
+            "node": "Guardar clasificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar clasificación": {
+      "main": [
+        [
+          {
+            "node": "Guardar evaluación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar evaluación": {
+      "main": [
+        [
+          {
+            "node": "Leer métricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer métricas": {
+      "main": [
+        [
+          {
+            "node": "Resumen a Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  },
+  "pinData": {}
+}
