@@ -1,18 +1,8 @@
-# Preparación de la demo
+# Casos de la demo
 
-## Antes de grabar
+Los 4 tickets que se envían en el video por el formulario del flujo A. Clientes ficticios; sirven para reproducir la demo. Para que la alerta de incidente salga, MX-1 a MX-3 deben enviarse con menos de 30 minutos entre el primero y el tercero y sin un incidente igual abierto.
 
-- [ ] **Cerrar los incidentes de prueba abiertos.** Hoy hay 2 abiertos (identidad, Colombia). Mientras sigan abiertos, un ticket igual se suma al incidente sin repetir la alerta. La demo usa México y Chile para no depender de esto, pero conviene dejar la base limpia:
-  ```sql
-  update incidentes set estado = 'cerrado' where estado = 'abierto';
-  ```
-- [ ] **Publicar el workflow A.** Despublicado, el formulario solo funciona en modo prueba desde el editor. Publicado, tiene una URL fija para grabar.
-- [ ] Confirmar que **C** está publicado (botones, correos y consultas). No probarlo desde el editor.
-- [ ] Tener a la mano un **resumen diario reciente** de D en Telegram (con las 4 gráficas) para el bloque 5. Si hace falta uno nuevo, ejecutar D manualmente.
-- [ ] Ensayo completo con estos mismos tickets. Después, cerrar el incidente de México que se creó en el ensayo para que la alerta vuelva a salir en la toma buena.
-- [ ] Ventanas listas: formulario de A, Telegram (escritorio o web), buzón de prueba del correo y Supabase en `v_metricas_corrida`.
-
-## Tickets de la demo
+## Tickets
 
 Clientes ficticios. Enviar MX-1, MX-2 y MX-3 con menos de 30 minutos entre el primero y el tercero.
 
@@ -49,6 +39,4 @@ Clientes ficticios. Enviar MX-1, MX-2 y MX-3 con menos de 30 minutos entre el pr
 | MX-3 | fuente externa (gobierno) | P1 | comunicado proactivo | Mensaje con borrador **y alerta de incidente: fuente externa** |
 | CL-1 | plataforma (Truora) | P1 o P2 | escalar a Ingeniería | Mensaje con ficha P3 y botón *Confirmar escalamiento* |
 
-**Ensayo del 28 oct (13:35):** 4 de 4 como se esperaba. MX-1 a MX-3 (casos #1056–#1058): fuente externa, P1, comunicado proactivo, confianza 0,90; al tercero se creó el incidente "fuente externa · identidad · MX". CL-1 (#1059): plataforma, P1, escalar a Ingeniería, confianza 0,80, con ficha P3. El incidente del ensayo se cerró después para que la alerta vuelva a salir en la toma buena.
-
-Si en el ensayo algún ticket sale distinto, se anota y se decide: si el resultado es defendible, se muestra tal cual; un modelo que acierta el 87 % no tiene por qué acertar siempre, y explicarlo suma.
+**Ensayo del 28 oct:** 4 de 4 como se esperaba. MX-1 a MX-3: fuente externa, P1, comunicado proactivo, confianza 0,90; al tercero se creó el incidente "fuente externa · identidad · MX". CL-1: plataforma, P1, escalar a Ingeniería, confianza 0,80, con ficha P3.

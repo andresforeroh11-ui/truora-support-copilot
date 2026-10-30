@@ -2,14 +2,6 @@
   "name": "A · Copiloto de triage y escalamiento",
   "nodes": [
     {
-      "id": "a506e312-1713-4aa9-9c1b-1ffc0ce8cc42",
-      "name": "Formulario de ticket",
-      "type": "n8n-nodes-base.formTrigger",
-      "typeVersion": 2.6,
-      "position": [
-        0,
-        176
-      ],
       "parameters": {
         "formTitle": "Soporte · Nuevo ticket",
         "formDescription": "Simulación del portal de soporte. Usa solo datos ficticios.",
@@ -17,7 +9,6 @@
           "values": [
             {
               "fieldLabel": "Cliente",
-              "fieldType": "text",
               "requiredField": true
             },
             {
@@ -46,7 +37,6 @@
             },
             {
               "fieldLabel": "Asunto",
-              "fieldType": "text",
               "requiredField": true
             },
             {
@@ -56,34 +46,29 @@
             }
           ]
         },
-        "responseMode": "onReceived",
         "options": {
           "appendAttribution": false,
           "path": "soporte-nuevo-ticket",
           "respondWithOptions": {
             "values": {
-              "respondWith": "text",
               "formSubmittedText": "Ticket recibido. El equipo de soporte ya lo está revisando."
             }
           }
         }
       },
+      "id": "a506e312-1713-4aa9-9c1b-1ffc0ce8cc42",
+      "name": "Formulario de ticket",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        176
+      ],
       "webhookId": "1d9e166b-67e9-49aa-8b02-eefd22bd97fe"
     },
     {
-      "id": "030c53e1-2521-4fcd-899a-7dd895197c12",
-      "name": "Guardar ticket",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        224,
-        176
-      ],
       "parameters": {
-        "resource": "row",
-        "operation": "create",
         "tableId": "tickets",
-        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -108,23 +93,21 @@
             }
           ]
         }
-      }
-    },
-    {
-      "id": "f309fb62-1a63-4ba8-8219-5bea224b2d87",
-      "name": "Leer prompts activos",
+      },
+      "id": "030c53e1-2521-4fcd-899a-7dd895197c12",
+      "name": "Guardar ticket",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        496,
-        288
-      ],
+        224,
+        176
+      ]
+    },
+    {
       "parameters": {
-        "resource": "row",
         "operation": "getAll",
         "tableId": "prompts",
         "returnAll": true,
-        "filterType": "manual",
         "matchType": "allFilters",
         "filters": {
           "conditions": [
@@ -136,9 +119,20 @@
           ]
         }
       },
+      "id": "f309fb62-1a63-4ba8-8219-5bea224b2d87",
+      "name": "Leer prompts activos",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        496,
+        288
+      ],
       "executeOnce": true
     },
     {
+      "parameters": {
+        "jsCode": "// Prompts activos desde Supabase (P1, P2, P3) y llamada de clasificación.\nconst prompts = Object.fromEntries($('Leer prompts activos').all().map(i => [i.json.nombre, i.json]));\nconst t = $('Guardar ticket').first().json;\nreturn [{ json: {\n  inicio: Date.now(),\n  modelo: 'gpt-4o-mini',\n  prompt_version: prompts.P1.version,\n  body: {\n    model: 'gpt-4o-mini',\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: prompts.P1.texto },\n      { role: 'user', content: 'País del cliente (formulario): ' + t.pais + '\\nTicket: ' + t.asunto + ' — ' + t.cuerpo }\n    ]\n  }\n}}];"
+      },
       "id": "18b4e77e-57bd-4c45-b78b-730836b40819",
       "name": "Armar llamada P1",
       "type": "n8n-nodes-base.code",
@@ -146,14 +140,21 @@
       "position": [
         720,
         288
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Prompts activos desde Supabase (P1, P2, P3) y llamada de clasificación.\nconst prompts = Object.fromEntries($('Leer prompts activos').all().map(i => [i.json.nombre, i.json]));\nconst t = $('Guardar ticket').first().json;\nreturn [{ json: {\n  inicio: Date.now(),\n  modelo: 'gpt-4o-mini',\n  prompt_version: prompts.P1.version,\n  body: {\n    model: 'gpt-4o-mini',\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: prompts.P1.texto },\n      { role: 'user', content: 'País del cliente (formulario): ' + t.pais + '\\nTicket: ' + t.asunto + ' — ' + t.cuerpo }\n    ]\n  }\n}}];"
-      }
+      ]
     },
     {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
       "id": "9ce744af-8b9b-407f-96ac-ec6f6945808b",
       "name": "P1 · Clasificar",
       "type": "n8n-nodes-base.httpRequest",
@@ -162,24 +163,14 @@
         944,
         288
       ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "timeout": 60000
-        }
-      },
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
     },
     {
+      "parameters": {
+        "jsCode": "// Valida el JSON de P1 contra el esquema. El país del formulario manda si el modelo no lo detecta.\nconst r = $input.first().json;\nconst req = $('Armar llamada P1').first().json;\nconst ticket = $('Guardar ticket').first().json;\nconst ENUM = {\n  severidad: ['P1','P2','P3','P4'],\n  origen_falla: ['truora','fuente_externa_gobierno','meta_whatsapp','integracion_cliente','usuario_final','no_aplica','indeterminado'],\n  accion_sugerida: ['escalar_ingenieria','comunicado_proactivo','responder_con_kb','pedir_datos'],\n};\nlet c = {}, valido = true, error = null;\ntry { c = JSON.parse(r.choices[0].message.content); }\ncatch (e) { valido = false; error = 'JSON inválido: ' + e.message; }\nfor (const [campo, permitidos] of Object.entries(ENUM)) {\n  if (!permitidos.includes(c[campo])) { valido = false; error = (error ? error + '; ' : '') + campo + ' fuera de esquema: ' + c[campo]; c[campo] = null; }\n}\nif (!c.severidad) { c.severidad = 'P2'; }\nif (!c.accion_sugerida) { c.accion_sugerida = 'pedir_datos'; }\nconst conf = Number(c.confianza);\nconst pais = ['MX','BR','CO','CL','PE'].includes(c.pais) ? c.pais : ticket.pais;\nreturn [{ json: {\n  ticket_id: ticket.id,\n  modelo: req.modelo,\n  prompt_version: req.prompt_version,\n  producto: c.producto ?? 'otro',\n  pais,\n  ambiente: c.ambiente ?? null,\n  tipo: c.tipo ?? null,\n  origen_falla: c.origen_falla,\n  codigo_motivo: c.codigo_motivo ?? null,\n  severidad: c.severidad,\n  confianza: Number.isFinite(conf) ? Math.min(Math.max(conf, 0), 1) : null,\n  justificacion: c.justificacion ?? null,\n  datos_faltantes: Array.isArray(c.datos_faltantes) ? c.datos_faltantes : [],\n  requiere_escalamiento: c.requiere_escalamiento === true,\n  accion_sugerida: c.accion_sugerida,\n  json_crudo: c,\n  json_valido: valido,\n  error,\n  latencia_ms: Date.now() - req.inicio,\n  tokens_entrada: r.usage?.prompt_tokens ?? null,\n  tokens_salida: r.usage?.completion_tokens ?? null,\n}}];"
+      },
       "id": "e694f35d-1bff-4cb3-85b1-e2a6c6ce852c",
       "name": "Validar JSON",
       "type": "n8n-nodes-base.code",
@@ -187,27 +178,11 @@
       "position": [
         1168,
         288
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Valida el JSON de P1 contra el esquema. El país del formulario manda si el modelo no lo detecta.\nconst r = $input.first().json;\nconst req = $('Armar llamada P1').first().json;\nconst ticket = $('Guardar ticket').first().json;\nconst ENUM = {\n  severidad: ['P1','P2','P3','P4'],\n  origen_falla: ['truora','fuente_externa_gobierno','meta_whatsapp','integracion_cliente','usuario_final','no_aplica','indeterminado'],\n  accion_sugerida: ['escalar_ingenieria','comunicado_proactivo','responder_con_kb','pedir_datos'],\n};\nlet c = {}, valido = true, error = null;\ntry { c = JSON.parse(r.choices[0].message.content); }\ncatch (e) { valido = false; error = 'JSON inválido: ' + e.message; }\nfor (const [campo, permitidos] of Object.entries(ENUM)) {\n  if (!permitidos.includes(c[campo])) { valido = false; error = (error ? error + '; ' : '') + campo + ' fuera de esquema: ' + c[campo]; c[campo] = null; }\n}\nif (!c.severidad) { c.severidad = 'P2'; }\nif (!c.accion_sugerida) { c.accion_sugerida = 'pedir_datos'; }\nconst conf = Number(c.confianza);\nconst pais = ['MX','BR','CO','CL','PE'].includes(c.pais) ? c.pais : ticket.pais;\nreturn [{ json: {\n  ticket_id: ticket.id,\n  modelo: req.modelo,\n  prompt_version: req.prompt_version,\n  producto: c.producto ?? 'otro',\n  pais,\n  ambiente: c.ambiente ?? null,\n  tipo: c.tipo ?? null,\n  origen_falla: c.origen_falla,\n  codigo_motivo: c.codigo_motivo ?? null,\n  severidad: c.severidad,\n  confianza: Number.isFinite(conf) ? Math.min(Math.max(conf, 0), 1) : null,\n  justificacion: c.justificacion ?? null,\n  datos_faltantes: Array.isArray(c.datos_faltantes) ? c.datos_faltantes : [],\n  requiere_escalamiento: c.requiere_escalamiento === true,\n  accion_sugerida: c.accion_sugerida,\n  json_crudo: c,\n  json_valido: valido,\n  error,\n  latencia_ms: Date.now() - req.inicio,\n  tokens_entrada: r.usage?.prompt_tokens ?? null,\n  tokens_salida: r.usage?.completion_tokens ?? null,\n}}];"
-      }
+      ]
     },
     {
-      "id": "ed0b86e1-da7a-441e-af2c-7fbf7b8840f1",
-      "name": "Guardar clasificación",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        976,
-        176
-      ],
       "parameters": {
-        "resource": "row",
-        "operation": "create",
         "tableId": "clasificaciones",
-        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -296,24 +271,21 @@
             }
           ]
         }
-      }
-    },
-    {
-      "id": "7e88ba19-93d9-4595-a88e-56ed1a682f88",
-      "name": "Leer motivo KB",
+      },
+      "id": "ed0b86e1-da7a-441e-af2c-7fbf7b8840f1",
+      "name": "Guardar clasificación",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1248,
-        192
-      ],
+        976,
+        176
+      ]
+    },
+    {
       "parameters": {
-        "resource": "row",
         "operation": "getAll",
         "tableId": "kb_motivos",
-        "returnAll": false,
         "limit": 1,
-        "filterType": "manual",
         "matchType": "allFilters",
         "filters": {
           "conditions": [
@@ -325,10 +297,24 @@
           ]
         }
       },
+      "id": "7e88ba19-93d9-4595-a88e-56ed1a682f88",
+      "name": "Leer motivo KB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        192
+      ],
       "executeOnce": true,
       "alwaysOutputData": true
     },
     {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "kb_articulos",
+        "returnAll": true,
+        "filterType": "none"
+      },
       "id": "168c8115-5e27-4d64-a709-018b1a6f4d7d",
       "name": "Leer artículos KB",
       "type": "n8n-nodes-base.supabase",
@@ -337,17 +323,13 @@
         1472,
         192
       ],
-      "parameters": {
-        "resource": "row",
-        "operation": "getAll",
-        "tableId": "kb_articulos",
-        "returnAll": true,
-        "filterType": "none"
-      },
       "executeOnce": true,
       "alwaysOutputData": true
     },
     {
+      "parameters": {
+        "jsCode": "// P2: borrador con SOLO la KB pertinente (artículos por origen + motivo de rechazo).\nconst prompts = Object.fromEntries($('Leer prompts activos').all().map(i => [i.json.nombre, i.json]));\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst motivo = $('Leer motivo KB').first().json || {};\nconst arts = $('Leer artículos KB').all().map(i => i.json)\n  .filter(a => a.slug && String(a.origen_falla || '').split('|').includes(c.origen_falla));\nconst kb = arts.length ? arts.map(a => '### ' + a.titulo + '\\n' + a.contenido).join('\\n\\n') : 'No hay artículos para este origen.';\nconst motivoTxt = motivo.codigo\n  ? 'Código: ' + motivo.codigo + '\\nQué significa: ' + (motivo.explicacion_es || motivo.descripcion_en) +\n    '\\nQué debe hacer el usuario final: ' + (motivo.accion_usuario_final || 'no documentado') +\n    '\\nQué debe hacer el cliente: ' + (motivo.accion_cliente || 'no documentado') +\n    '\\nTono: ' + (motivo.nota_tono || 'sin indicaciones')\n  : 'Sin motivo de rechazo.';\nconst clasif = { severidad: c.severidad, origen_falla: c.origen_falla, accion_sugerida: c.accion_sugerida, codigo_motivo: c.codigo_motivo, producto: c.producto, ambiente: c.ambiente, datos_faltantes: c.datos_faltantes };\nconst user = 'Ticket\\nCliente: ' + t.cliente + '\\nPaís: ' + c.pais + '\\nAsunto: ' + t.asunto + '\\nDescripción: ' + t.cuerpo +\n  '\\n\\nClasificación\\n' + JSON.stringify(clasif) +\n  '\\n\\nArtículos de conocimiento\\n' + kb + '\\n\\nMotivo de rechazo\\n' + motivoTxt;\nreturn [{ json: {\n  kb_usada: arts.map(a => a.slug).concat(motivo.codigo ? ['motivo:' + motivo.codigo] : []),\n  body: { model: 'gpt-4o-mini', temperature: 0.3, messages: [ { role: 'system', content: prompts.P2.texto }, { role: 'user', content: user } ] }\n}}];"
+      },
       "id": "6d187407-cd3c-4921-9e60-c61c4b5a2963",
       "name": "Armar llamada P2",
       "type": "n8n-nodes-base.code",
@@ -355,14 +337,21 @@
       "position": [
         1696,
         192
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// P2: borrador con SOLO la KB pertinente (artículos por origen + motivo de rechazo).\nconst prompts = Object.fromEntries($('Leer prompts activos').all().map(i => [i.json.nombre, i.json]));\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst motivo = $('Leer motivo KB').first().json || {};\nconst arts = $('Leer artículos KB').all().map(i => i.json)\n  .filter(a => a.slug && String(a.origen_falla || '').split('|').includes(c.origen_falla));\nconst kb = arts.length ? arts.map(a => '### ' + a.titulo + '\\n' + a.contenido).join('\\n\\n') : 'No hay artículos para este origen.';\nconst motivoTxt = motivo.codigo\n  ? 'Código: ' + motivo.codigo + '\\nQué significa: ' + (motivo.explicacion_es || motivo.descripcion_en) +\n    '\\nQué debe hacer el usuario final: ' + (motivo.accion_usuario_final || 'no documentado') +\n    '\\nQué debe hacer el cliente: ' + (motivo.accion_cliente || 'no documentado') +\n    '\\nTono: ' + (motivo.nota_tono || 'sin indicaciones')\n  : 'Sin motivo de rechazo.';\nconst clasif = { severidad: c.severidad, origen_falla: c.origen_falla, accion_sugerida: c.accion_sugerida, codigo_motivo: c.codigo_motivo, producto: c.producto, ambiente: c.ambiente, datos_faltantes: c.datos_faltantes };\nconst user = 'Ticket\\nCliente: ' + t.cliente + '\\nPaís: ' + c.pais + '\\nAsunto: ' + t.asunto + '\\nDescripción: ' + t.cuerpo +\n  '\\n\\nClasificación\\n' + JSON.stringify(clasif) +\n  '\\n\\nArtículos de conocimiento\\n' + kb + '\\n\\nMotivo de rechazo\\n' + motivoTxt;\nreturn [{ json: {\n  kb_usada: arts.map(a => a.slug).concat(motivo.codigo ? ['motivo:' + motivo.codigo] : []),\n  body: { model: 'gpt-4o-mini', temperature: 0.3, messages: [ { role: 'system', content: prompts.P2.texto }, { role: 'user', content: user } ] }\n}}];"
-      }
+      ]
     },
     {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
       "id": "f816c17a-c002-4f32-84c9-5301cf4c9f96",
       "name": "P2 · Redactar borrador",
       "type": "n8n-nodes-base.httpRequest",
@@ -371,37 +360,13 @@
         1920,
         192
       ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "timeout": 60000
-        }
-      },
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
     },
     {
-      "id": "f4f23de9-d5d3-49d6-a158-0e238838a388",
-      "name": "Guardar respuesta",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        2144,
-        192
-      ],
       "parameters": {
-        "resource": "row",
-        "operation": "create",
         "tableId": "respuestas",
-        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -426,23 +391,24 @@
             }
           ]
         }
-      }
+      },
+      "id": "f4f23de9-d5d3-49d6-a158-0e238838a388",
+      "name": "Guardar respuesta",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2144,
+        192
+      ]
     },
     {
-      "id": "f22548e0-2545-4d07-99bc-3195dc6fb9b0",
-      "name": "¿Escalar a Ingeniería?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1728,
-        80
-      ],
       "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "loose"
+            "typeValidation": "loose",
+            "version": 1
           },
           "conditions": [
             {
@@ -455,10 +421,22 @@
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "f22548e0-2545-4d07-99bc-3195dc6fb9b0",
+      "name": "¿Escalar a Ingeniería?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1728,
+        80
+      ]
     },
     {
+      "parameters": {
+        "jsCode": "// P3: ficha de escalamiento solo cuando el origen es la plataforma (o indeterminado P1/P2).\nconst prompts = Object.fromEntries($('Leer prompts activos').all().map(i => [i.json.nombre, i.json]));\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst user = 'Ticket\\nCliente: ' + t.cliente + '\\nPaís: ' + c.pais + '\\nAsunto: ' + t.asunto + '\\nDescripción: ' + t.cuerpo +\n  '\\n\\nClasificación\\n' + JSON.stringify({ severidad: c.severidad, origen_falla: c.origen_falla, producto: c.producto, ambiente: c.ambiente, codigo_motivo: c.codigo_motivo, justificacion: c.justificacion, datos_faltantes: c.datos_faltantes });\nreturn [{ json: { body: { model: 'gpt-4o-mini', temperature: 0, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: prompts.P3.texto }, { role: 'user', content: user } ] } } }];"
+      },
       "id": "05176b05-83a0-4366-afcc-b1f82b03cea9",
       "name": "Armar llamada P3",
       "type": "n8n-nodes-base.code",
@@ -466,14 +444,21 @@
       "position": [
         2000,
         128
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// P3: ficha de escalamiento solo cuando el origen es la plataforma (o indeterminado P1/P2).\nconst prompts = Object.fromEntries($('Leer prompts activos').all().map(i => [i.json.nombre, i.json]));\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst user = 'Ticket\\nCliente: ' + t.cliente + '\\nPaís: ' + c.pais + '\\nAsunto: ' + t.asunto + '\\nDescripción: ' + t.cuerpo +\n  '\\n\\nClasificación\\n' + JSON.stringify({ severidad: c.severidad, origen_falla: c.origen_falla, producto: c.producto, ambiente: c.ambiente, codigo_motivo: c.codigo_motivo, justificacion: c.justificacion, datos_faltantes: c.datos_faltantes });\nreturn [{ json: { body: { model: 'gpt-4o-mini', temperature: 0, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: prompts.P3.texto }, { role: 'user', content: user } ] } } }];"
-      }
+      ]
     },
     {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
       "id": "bf6ba209-fe06-49bc-8bf1-6d5a1762e262",
       "name": "P3 · Ficha de escalamiento",
       "type": "n8n-nodes-base.httpRequest",
@@ -482,37 +467,13 @@
         2224,
         128
       ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "timeout": 60000
-        }
-      },
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
     },
     {
-      "id": "18af26cf-2a20-495e-be1a-6a4d47737a5a",
-      "name": "Guardar escalamiento",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        2448,
-        128
-      ],
       "parameters": {
-        "resource": "row",
-        "operation": "create",
         "tableId": "escalamientos",
-        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -538,9 +499,20 @@
           ]
         }
       },
+      "id": "18af26cf-2a20-495e-be1a-6a4d47737a5a",
+      "name": "Guardar escalamiento",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        128
+      ],
       "onError": "continueRegularOutput"
     },
     {
+      "parameters": {
+        "jsCode": "// Mensaje para el líder/N1 en Telegram (HTML escapado, máx. ~3.500 caracteres).\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst corta = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst resp = $('Guardar respuesta').first().json;\nlet esc_row = null;\ntry { esc_row = $('Guardar escalamiento').first().json; } catch (e) { esc_row = null; }\nconst ficha = esc_row && esc_row.ficha;\nconst icono = { P1: '🔴', P2: '🟠', P3: '🟡', P4: '⚪' }[c.severidad] || '❓';\nconst esComunicado = resp.tipo === 'comunicado';\nconst lineas = [\n  icono + ' <b>' + esc(c.severidad) + ' · ' + esc(c.origen_falla || 'sin origen') + '</b>',\n  '📌 <b>Caso #' + esc(t.numero_caso) + '</b> · recibido ' + esc(hora(t.created_at)) + ' (hora Bogotá)',\n  esc(t.cliente) + ' (' + esc(c.pais) + ') · ' + esc(c.producto) + ' · ' + esc(c.ambiente || 'ambiente ?'),\n  '<i>' + esc(t.asunto) + '</i>',\n  '',\n  'Acción: <b>' + esc(c.accion_sugerida) + '</b>' + (c.requiere_escalamiento ? ' → ESCALAMIENTO A INGENIERÍA' : ''),\n  'Por qué: ' + esc(c.justificacion),\n  'Pedir al cliente: ' + esc(c.datos_faltantes.length ? c.datos_faltantes.join('; ') : 'nada'),\n  '',\n  '<b>✍️ ' + (esComunicado ? 'Comunicado proactivo' : 'Borrador de respuesta') + '</b> (pendiente de aprobación)',\n  esc(corta(resp.borrador, 1500)),\n];\nif (ficha && typeof ficha === 'object') {\n  lineas.push('', '<b>🛠 Ficha para Ingeniería</b>', esc(ficha.titulo),\n    'Hipótesis: ' + esc(ficha.hipotesis) + ' (certeza ' + esc(ficha.certeza) + ')',\n    'Revisar: ' + esc((ficha.que_revisar || []).slice(0, 4).join(' · ')));\n}\nif (!c.json_valido) lineas.push('', '⚠️ Revisar clasificación: ' + esc(c.error));\nlineas.push('', '📧 <b>Aprobar y enviar</b> manda ' + (esComunicado ? 'el comunicado' : 'la respuesta') + ' por correo al cliente y te confirmo el envío aquí.');\nif (esc_row && esc_row.id) lineas.push('📧 <b>Confirmar escalamiento</b> manda la ficha por correo a Ingeniería.');\nlineas.push('💬 Para preguntar por este caso escribe: <code>caso ' + esc(t.numero_caso) + '</code> y tu pregunta.');\nreturn [{ json: { mensaje: lineas.join('\\n'), respuesta_id: resp.id, escalamiento_id: (esc_row && esc_row.id) || null, con_escalamiento: !!(esc_row && esc_row.id) } }];"
+      },
       "id": "f460abd4-7011-48e9-8ece-4d6b5d5879ef",
       "name": "Componer mensaje",
       "type": "n8n-nodes-base.code",
@@ -548,25 +520,10 @@
       "position": [
         2480,
         80
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Mensaje para el líder/N1 en Telegram (HTML escapado, máx. ~3.500 caracteres).\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst corta = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n) + '…' : s; };\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst c = $('Validar JSON').first().json;\nconst t = $('Guardar ticket').first().json;\nconst resp = $('Guardar respuesta').first().json;\nlet esc_row = null;\ntry { esc_row = $('Guardar escalamiento').first().json; } catch (e) { esc_row = null; }\nconst ficha = esc_row && esc_row.ficha;\nconst icono = { P1: '🔴', P2: '🟠', P3: '🟡', P4: '⚪' }[c.severidad] || '❓';\nconst esComunicado = resp.tipo === 'comunicado';\nconst lineas = [\n  icono + ' <b>' + esc(c.severidad) + ' · ' + esc(c.origen_falla || 'sin origen') + '</b>',\n  '📌 <b>Caso #' + esc(t.numero_caso) + '</b> · recibido ' + esc(hora(t.created_at)) + ' (hora Bogotá)',\n  esc(t.cliente) + ' (' + esc(c.pais) + ') · ' + esc(c.producto) + ' · ' + esc(c.ambiente || 'ambiente ?'),\n  '<i>' + esc(t.asunto) + '</i>',\n  '',\n  'Acción: <b>' + esc(c.accion_sugerida) + '</b>' + (c.requiere_escalamiento ? ' → ESCALAMIENTO A INGENIERÍA' : ''),\n  'Por qué: ' + esc(c.justificacion),\n  'Pedir al cliente: ' + esc(c.datos_faltantes.length ? c.datos_faltantes.join('; ') : 'nada'),\n  '',\n  '<b>✍️ ' + (esComunicado ? 'Comunicado proactivo' : 'Borrador de respuesta') + '</b> (pendiente de aprobación)',\n  esc(corta(resp.borrador, 1500)),\n];\nif (ficha && typeof ficha === 'object') {\n  lineas.push('', '<b>🛠 Ficha para Ingeniería</b>', esc(ficha.titulo),\n    'Hipótesis: ' + esc(ficha.hipotesis) + ' (certeza ' + esc(ficha.certeza) + ')',\n    'Revisar: ' + esc((ficha.que_revisar || []).slice(0, 4).join(' · ')));\n}\nif (!c.json_valido) lineas.push('', '⚠️ Revisar clasificación: ' + esc(c.error));\nlineas.push('', '📧 <b>Aprobar y enviar</b> manda ' + (esComunicado ? 'el comunicado' : 'la respuesta') + ' por correo al cliente y te confirmo el envío aquí.');\nif (esc_row && esc_row.id) lineas.push('📧 <b>Confirmar escalamiento</b> manda la ficha por correo a Ingeniería.');\nlineas.push('💬 Para preguntar por este caso escribe: <code>caso ' + esc(t.numero_caso) + '</code> y tu pregunta.');\nreturn [{ json: { mensaje: lineas.join('\\n'), respuesta_id: resp.id, escalamiento_id: (esc_row && esc_row.id) || null, con_escalamiento: !!(esc_row && esc_row.id) } }];"
-      }
+      ]
     },
     {
-      "id": "3f7936f7-cf51-43b4-95a3-bf657671bd1b",
-      "name": "Enviar a Telegram",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        2816,
-        80
-      ],
       "parameters": {
-        "resource": "message",
-        "operation": "sendMessage",
         "chatId": "TU_CHAT_ID",
         "text": "={{ $json.mensaje }}",
         "replyMarkup": "inlineKeyboard",
@@ -576,22 +533,22 @@
               "row": {
                 "buttons": [
                   {
+                    "text": "✅ Aprobar y enviar",
                     "additionalFields": {
                       "callback_data": "=ap:{{ $json.respuesta_id }}"
-                    },
-                    "text": "✅ Aprobar y enviar"
+                    }
                   },
                   {
+                    "text": "✏️ Editar",
                     "additionalFields": {
                       "callback_data": "=ed:{{ $json.respuesta_id }}"
-                    },
-                    "text": "✏️ Editar"
+                    }
                   },
                   {
+                    "text": "❌ Rechazar",
                     "additionalFields": {
                       "callback_data": "=re:{{ $json.respuesta_id }}"
-                    },
-                    "text": "❌ Rechazar"
+                    }
                   }
                 ]
               }
@@ -603,24 +560,22 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput",
-      "webhookId": "6074b3b6-5275-4849-b66b-4a657b56cb36"
+      "id": "3f7936f7-cf51-43b4-95a3-bf657671bd1b",
+      "name": "Enviar a Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2816,
+        80
+      ],
+      "webhookId": "6074b3b6-5275-4849-b66b-4a657b56cb36",
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "d694aee0-9035-413c-a55b-035aad4319fb",
-      "name": "Leer clasificaciones recientes",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        1248,
-        384
-      ],
       "parameters": {
-        "resource": "row",
         "operation": "getAll",
         "tableId": "v_clasificaciones_vivas",
         "returnAll": true,
-        "filterType": "manual",
         "matchType": "allFilters",
         "filters": {
           "conditions": [
@@ -642,9 +597,47 @@
           ]
         }
       },
+      "id": "d694aee0-9035-413c-a55b-035aad4319fb",
+      "name": "Leer clasificaciones recientes",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        384
+      ],
       "executeOnce": true
     },
     {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "incidentes",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "producto",
+              "condition": "eq",
+              "keyValue": "={{ $('Validar JSON').first().json.producto }}"
+            },
+            {
+              "keyName": "pais",
+              "condition": "eq",
+              "keyValue": "={{ $('Validar JSON').first().json.pais }}"
+            },
+            {
+              "keyName": "estado",
+              "condition": "eq",
+              "keyValue": "abierto"
+            },
+            {
+              "keyName": "created_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ hours: 24 }).toISO() }}"
+            }
+          ]
+        }
+      },
       "id": "628970cd-b26e-4154-b6ae-b0f8595cb48d",
       "name": "Leer incidentes abiertos",
       "type": "n8n-nodes-base.supabase",
@@ -653,42 +646,13 @@
         1472,
         384
       ],
-      "parameters": {
-        "resource": "row",
-        "operation": "getAll",
-        "tableId": "incidentes",
-        "returnAll": true,
-        "filterType": "manual",
-        "matchType": "allFilters",
-        "filters": {
-          "conditions": [
-            {
-              "condition": "eq",
-              "keyName": "producto",
-              "keyValue": "={{ $('Validar JSON').first().json.producto }}"
-            },
-            {
-              "condition": "eq",
-              "keyName": "pais",
-              "keyValue": "={{ $('Validar JSON').first().json.pais }}"
-            },
-            {
-              "condition": "eq",
-              "keyName": "estado",
-              "keyValue": "abierto"
-            },
-            {
-              "condition": "gte",
-              "keyName": "created_at",
-              "keyValue": "={{ $now.minus({ hours: 24 }).toISO() }}"
-            }
-          ]
-        }
-      },
       "executeOnce": true,
       "alwaysOutputData": true
     },
     {
+      "parameters": {
+        "jsCode": "// Incidente = 3+ tickets del mismo producto y país en 30 min. La firma dice a quién le toca.\n// Si ya hay un incidente ABIERTO del mismo producto y país (últimas 24 h) y el ticket encaja con su firma,\n// el ticket se SUMA a ese incidente: no se crea otro ni se repite la alerta.\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst actual = $('Validar JSON').first().json;\nconst ticket = $('Guardar ticket').first().json;\nconst todos = $('Leer clasificaciones recientes').all().map(i => i.json).filter(r => r.id);\nconst abiertos = $('Leer incidentes abiertos').all().map(i => i.json).filter(r => r.id);\nconst firmaDe = (origen) => origen === 'fuente_externa_gobierno' ? 'fuente_externa' : (['truora', 'indeterminado'].includes(origen) ? 'plataforma' : null);\n\n// 1) ¿Ya existe un incidente abierto al que pertenece este ticket?\nconst miFirma = firmaDe(actual.origen_falla);\nconst existente = abiertos.filter(i => i.firma === miFirma).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];\nif (existente) {\n  const ids = Array.isArray(existente.ticket_ids) ? existente.ticket_ids : [];\n  if (ids.includes(ticket.id)) return [];\n  const casos = [...new Set([...(existente.casos || []).map(Number), Number(ticket.numero_caso)])].filter(Boolean).sort((a, b) => a - b);\n  return [{ json: { accion: 'agregar', id: existente.id, ticket_ids: [...ids, ticket.id], casos } }];\n}\nif (abiertos.length) return [];\n\n// 2) No hay incidente abierto: ¿este ticket completa uno nuevo?\nconst porTicket = {};\nfor (const r of todos) if (!porTicket[r.ticket_id] || r.created_at > porTicket[r.ticket_id].created_at) porTicket[r.ticket_id] = r;\nconst rec = Object.values(porTicket);\nif (rec.length < 3) return [];\nconst n = (o) => rec.filter(r => r.origen_falla === o).length;\nlet firma = null;\nif (n('fuente_externa_gobierno') >= rec.length / 2) firma = 'fuente_externa';\nelse if (n('truora') + n('indeterminado') >= rec.length / 2) firma = 'plataforma';\nif (!firma) return [];\nconst conteo = {};\nfor (const r of rec) if (r.codigo_motivo) conteo[r.codigo_motivo] = (conteo[r.codigo_motivo] || 0) + 1;\nconst codigo = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a])[0] || null;\nconst casos = rec.map(r => Number(r.numero_caso)).filter(Boolean).sort((a, b) => a - b);\nconst inicio = rec.map(r => r.ticket_created_at || r.created_at).sort()[0];\nconst base = rec.length + ' tickets de ' + actual.producto + ' en ' + actual.pais + ' en los últimos 30 min.' +\n  '\\n📌 <b>Casos:</b> ' + casos.map(x => '#' + x).join(', ') +\n  '\\n🕒 <b>Ocurre desde:</b> ' + hora(inicio) + ' (primer ticket, hora Bogotá)' +\n  '\\nDetectado: ' + hora($now.toISO());\nconst mensaje = firma === 'fuente_externa'\n  ? '🚨 <b>Posible incidente: FUENTE EXTERNA</b>\\n' + base + (codigo ? '\\nCódigo común: ' + codigo : '') +\n    '\\n<b>Acción:</b> confirmar en status.truora.com, enviar comunicado proactivo a los clientes del país y no escalar a Ingeniería.'\n  : '🚨 <b>Posible incidente de PLATAFORMA</b>\\n' + base +\n    '\\n<b>Acción:</b> abrir incidente con Ingeniería (adjuntar fichas P3) y comunicar a los clientes afectados.';\nreturn [{ json: { accion: 'crear', producto: actual.producto, pais: actual.pais, firma, codigo_motivo: codigo, ticket_ids: rec.map(r => r.ticket_id), casos, inicio_at: inicio, mensaje_alerta: mensaje + '\\n💬 Pregunta por cualquiera: <code>caso ' + casos[0] + '</code> y tu pregunta.' } }];"
+      },
       "id": "7138ae9c-a37d-48b8-be2e-981c58673daa",
       "name": "Evaluar incidente",
       "type": "n8n-nodes-base.code",
@@ -696,27 +660,11 @@
       "position": [
         1696,
         384
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Incidente = 3+ tickets del mismo producto y país en 30 min. La firma dice a quién le toca.\n// Si ya hay un incidente ABIERTO del mismo producto y país (últimas 24 h) y el ticket encaja con su firma,\n// el ticket se SUMA a ese incidente: no se crea otro ni se repite la alerta.\nconst hora = (iso) => DateTime.fromISO(String(iso)).setZone('America/Bogota').setLocale('es').toFormat(\"ccc d LLL yyyy, h:mm a\");\nconst actual = $('Validar JSON').first().json;\nconst ticket = $('Guardar ticket').first().json;\nconst todos = $('Leer clasificaciones recientes').all().map(i => i.json).filter(r => r.id);\nconst abiertos = $('Leer incidentes abiertos').all().map(i => i.json).filter(r => r.id);\nconst firmaDe = (origen) => origen === 'fuente_externa_gobierno' ? 'fuente_externa' : (['truora', 'indeterminado'].includes(origen) ? 'plataforma' : null);\n\n// 1) ¿Ya existe un incidente abierto al que pertenece este ticket?\nconst miFirma = firmaDe(actual.origen_falla);\nconst existente = abiertos.filter(i => i.firma === miFirma).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];\nif (existente) {\n  const ids = Array.isArray(existente.ticket_ids) ? existente.ticket_ids : [];\n  if (ids.includes(ticket.id)) return [];\n  const casos = [...new Set([...(existente.casos || []).map(Number), Number(ticket.numero_caso)])].filter(Boolean).sort((a, b) => a - b);\n  return [{ json: { accion: 'agregar', id: existente.id, ticket_ids: [...ids, ticket.id], casos } }];\n}\nif (abiertos.length) return [];\n\n// 2) No hay incidente abierto: ¿este ticket completa uno nuevo?\nconst porTicket = {};\nfor (const r of todos) if (!porTicket[r.ticket_id] || r.created_at > porTicket[r.ticket_id].created_at) porTicket[r.ticket_id] = r;\nconst rec = Object.values(porTicket);\nif (rec.length < 3) return [];\nconst n = (o) => rec.filter(r => r.origen_falla === o).length;\nlet firma = null;\nif (n('fuente_externa_gobierno') >= rec.length / 2) firma = 'fuente_externa';\nelse if (n('truora') + n('indeterminado') >= rec.length / 2) firma = 'plataforma';\nif (!firma) return [];\nconst conteo = {};\nfor (const r of rec) if (r.codigo_motivo) conteo[r.codigo_motivo] = (conteo[r.codigo_motivo] || 0) + 1;\nconst codigo = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a])[0] || null;\nconst casos = rec.map(r => Number(r.numero_caso)).filter(Boolean).sort((a, b) => a - b);\nconst inicio = rec.map(r => r.ticket_created_at || r.created_at).sort()[0];\nconst base = rec.length + ' tickets de ' + actual.producto + ' en ' + actual.pais + ' en los últimos 30 min.' +\n  '\\n📌 <b>Casos:</b> ' + casos.map(x => '#' + x).join(', ') +\n  '\\n🕒 <b>Ocurre desde:</b> ' + hora(inicio) + ' (primer ticket, hora Bogotá)' +\n  '\\nDetectado: ' + hora($now.toISO());\nconst mensaje = firma === 'fuente_externa'\n  ? '🚨 <b>Posible incidente: FUENTE EXTERNA</b>\\n' + base + (codigo ? '\\nCódigo común: ' + codigo : '') +\n    '\\n<b>Acción:</b> confirmar en status.truora.com, enviar comunicado proactivo a los clientes del país y no escalar a Ingeniería.'\n  : '🚨 <b>Posible incidente de PLATAFORMA</b>\\n' + base +\n    '\\n<b>Acción:</b> abrir incidente con Ingeniería (adjuntar fichas P3) y comunicar a los clientes afectados.';\nreturn [{ json: { accion: 'crear', producto: actual.producto, pais: actual.pais, firma, codigo_motivo: codigo, ticket_ids: rec.map(r => r.ticket_id), casos, inicio_at: inicio, mensaje_alerta: mensaje + '\\n💬 Pregunta por cualquiera: <code>caso ' + casos[0] + '</code> y tu pregunta.' } }];"
-      }
+      ]
     },
     {
-      "id": "5c534a06-eeb3-42d9-bc6e-314ab3e7673f",
-      "name": "Guardar incidente",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        2144,
-        352
-      ],
       "parameters": {
-        "resource": "row",
-        "operation": "create",
         "tableId": "incidentes",
-        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -757,9 +705,25 @@
             }
           ]
         }
-      }
+      },
+      "id": "5c534a06-eeb3-42d9-bc6e-314ab3e7673f",
+      "name": "Guardar incidente",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2144,
+        352
+      ]
     },
     {
+      "parameters": {
+        "chatId": "TU_CHAT_ID",
+        "text": "={{ $('Evaluar incidente').first().json.mensaje_alerta }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
       "id": "7aa562d9-be05-4274-a953-6e11fac06a72",
       "name": "Alerta de incidente",
       "type": "n8n-nodes-base.telegram",
@@ -768,44 +732,26 @@
         2368,
         352
       ],
-      "parameters": {
-        "resource": "message",
-        "operation": "sendMessage",
-        "chatId": "TU_CHAT_ID",
-        "text": "={{ $('Evaluar incidente').first().json.mensaje_alerta }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
-        }
-      },
-      "onError": "continueRegularOutput",
-      "webhookId": "98e413e8-9fac-4f7a-bfa3-534577445c87"
+      "webhookId": "98e413e8-9fac-4f7a-bfa3-534577445c87",
+      "onError": "continueRegularOutput"
     },
     {
+      "parameters": {
+        "content": "## Copiloto de triage y escalamiento\n1. P1 clasifica origen, severidad y ruta.\n2. P2 redacta el borrador solo con la KB.\n3. P3 arma la ficha solo si la falla es de la plataforma.\n4. Si hay 3+ tickets iguales en 30 min, alerta de incidente con su firma.\nLos prompts se leen versionados desde Supabase. Nada llega al cliente sin aprobación humana.",
+        "height": 336,
+        "width": 656,
+        "color": 4
+      },
       "id": "f4de5fca-e767-44c4-9628-8573c69a2133",
       "name": "Sticky Note 984599ae",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -32,
-        80
-      ],
-      "parameters": {
-        "content": "## Copiloto de triage y escalamiento\n1. P1 clasifica origen, severidad y ruta.\n2. P2 redacta el borrador solo con la KB.\n3. P3 arma la ficha solo si la falla es de la plataforma.\n4. Si hay 3+ tickets iguales en 30 min, alerta de incidente con su firma.\nLos prompts se leen versionados desde Supabase. Nada llega al cliente sin aprobación humana.",
-        "color": 4,
-        "width": 656,
-        "height": 336
-      }
+        -224,
+        -16
+      ]
     },
     {
-      "id": "8c78e221-66c8-4db6-8681-65589520fedf",
-      "name": "¿Con escalamiento?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        2592,
-        -32
-      ],
       "parameters": {
         "conditions": {
           "combinator": "and",
@@ -822,48 +768,48 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "loose"
+            "typeValidation": "loose",
+            "version": 1
           }
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "8c78e221-66c8-4db6-8681-65589520fedf",
+      "name": "¿Con escalamiento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2592,
+        -32
+      ]
     },
     {
-      "id": "5ef698d8-634c-4f29-99fc-f2a0b0cc69fd",
-      "name": "Enviar a Telegram con escalamiento",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        2816,
-        -128
-      ],
       "parameters": {
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
-        },
         "chatId": "TU_CHAT_ID",
+        "text": "={{ $json.mensaje }}",
+        "replyMarkup": "inlineKeyboard",
         "inlineKeyboard": {
           "rows": [
             {
               "row": {
                 "buttons": [
                   {
+                    "text": "✅ Aprobar y enviar",
                     "additionalFields": {
                       "callback_data": "=ap:{{ $json.respuesta_id }}"
-                    },
-                    "text": "✅ Aprobar y enviar"
+                    }
                   },
                   {
+                    "text": "✏️ Editar",
                     "additionalFields": {
                       "callback_data": "=ed:{{ $json.respuesta_id }}"
-                    },
-                    "text": "✏️ Editar"
+                    }
                   },
                   {
+                    "text": "❌ Rechazar",
                     "additionalFields": {
                       "callback_data": "=re:{{ $json.respuesta_id }}"
-                    },
-                    "text": "❌ Rechazar"
+                    }
                   }
                 ]
               }
@@ -872,33 +818,33 @@
               "row": {
                 "buttons": [
                   {
+                    "text": "🛠 Confirmar escalamiento (correo a Ingeniería)",
                     "additionalFields": {
                       "callback_data": "=es:{{ $json.escalamiento_id }}"
-                    },
-                    "text": "🛠 Confirmar escalamiento (correo a Ingeniería)"
+                    }
                   }
                 ]
               }
             }
           ]
         },
-        "operation": "sendMessage",
-        "replyMarkup": "inlineKeyboard",
-        "resource": "message",
-        "text": "={{ $json.mensaje }}"
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
       },
-      "onError": "continueRegularOutput",
-      "webhookId": "155731df-0db2-428e-aef2-527e279fd337"
+      "id": "5ef698d8-634c-4f29-99fc-f2a0b0cc69fd",
+      "name": "Enviar a Telegram con escalamiento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2816,
+        -128
+      ],
+      "webhookId": "155731df-0db2-428e-aef2-527e279fd337",
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "2c42990f-dce9-462c-b139-2c940393ddbe",
-      "name": "¿Incidente nuevo?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1920,
-        384
-      ],
       "parameters": {
         "conditions": {
           "combinator": "and",
@@ -915,22 +861,35 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "loose"
+            "typeValidation": "loose",
+            "version": 1
           }
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "2c42990f-dce9-462c-b139-2c940393ddbe",
+      "name": "¿Incidente nuevo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        384
+      ]
     },
     {
-      "id": "0acb2ee7-35da-4205-80d7-c5f6bf8e9a26",
-      "name": "Sumar al incidente abierto",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        2144,
-        528
-      ],
       "parameters": {
-        "dataToSend": "defineBelow",
+        "operation": "update",
+        "tableId": "incidentes",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
         "fieldsUi": {
           "fieldValues": [
             {
@@ -942,22 +901,16 @@
               "fieldValue": "={{ $json.casos }}"
             }
           ]
-        },
-        "filterType": "manual",
-        "filters": {
-          "conditions": [
-            {
-              "condition": "eq",
-              "keyName": "id",
-              "keyValue": "={{ $json.id }}"
-            }
-          ]
-        },
-        "matchType": "allFilters",
-        "operation": "update",
-        "resource": "row",
-        "tableId": "incidentes"
+        }
       },
+      "id": "0acb2ee7-35da-4205-80d7-c5f6bf8e9a26",
+      "name": "Sumar al incidente abierto",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2144,
+        528
+      ],
       "onError": "continueRegularOutput"
     }
   ],
@@ -1243,6 +1196,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "timezone": "America/Bogota",
+    "binaryMode": "separate"
   }
 }

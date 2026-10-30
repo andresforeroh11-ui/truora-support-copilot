@@ -2,20 +2,11 @@
   "name": "D · Resumen diario del líder (P4)",
   "nodes": [
     {
-      "id": "2300b98b-93a6-4ba9-b298-1694166e0eb3",
-      "name": "Lunes a viernes 7:24",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.4,
-      "position": [
-        0,
-        0
-      ],
       "parameters": {
         "rule": {
           "interval": [
             {
               "field": "weeks",
-              "weeksInterval": 1,
               "triggerAtDay": [
                 1,
                 2,
@@ -28,9 +19,23 @@
             }
           ]
         }
-      }
+      },
+      "id": "2300b98b-93a6-4ba9-b298-1694166e0eb3",
+      "name": "Lunes a viernes 7:24",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ]
     },
     {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "v_resumen_diario",
+        "limit": 1,
+        "filterType": "none"
+      },
       "id": "5bb3d227-7d58-464f-8cda-0278b79cd01c",
       "name": "Leer métricas 24 h",
       "type": "n8n-nodes-base.supabase",
@@ -39,17 +44,10 @@
         272,
         224
       ],
-      "parameters": {
-        "resource": "row",
-        "operation": "getAll",
-        "tableId": "v_resumen_diario",
-        "returnAll": false,
-        "limit": 1,
-        "filterType": "none"
-      },
       "executeOnce": true
     },
     {
+      "parameters": {},
       "id": "9514673f-8762-4d78-bf1f-f602976314ce",
       "name": "Generar ahora (demo)",
       "type": "n8n-nodes-base.manualTrigger",
@@ -57,25 +55,13 @@
       "position": [
         0,
         192
-      ],
-      "parameters": {}
+      ]
     },
     {
-      "id": "57c16dea-ac05-42cb-b1a9-3f1cb43eaa58",
-      "name": "Leer prompt P4",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        496,
-        224
-      ],
       "parameters": {
-        "resource": "row",
         "operation": "getAll",
         "tableId": "prompts",
-        "returnAll": false,
         "limit": 1,
-        "filterType": "manual",
         "matchType": "allFilters",
         "filters": {
           "conditions": [
@@ -92,9 +78,20 @@
           ]
         }
       },
+      "id": "57c16dea-ac05-42cb-b1a9-3f1cb43eaa58",
+      "name": "Leer prompt P4",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        496,
+        224
+      ],
       "executeOnce": true
     },
     {
+      "parameters": {
+        "jsCode": "// Las cifras vienen de SQL; la IA solo las interpreta. El periodo lo fija config_reporte (acumulado o últimas N h).\nconst m = $('Leer métricas 24 h').first().json;\nconst p = $('Leer prompt P4').first().json;\nconst periodo = ($('Leer métricas 24 h').first().json.periodo) || null;\nreturn [{ json: { metricas: m, body: { model: 'gpt-4o-mini', temperature: 0.2, messages: [ { role: 'system', content: p.texto + '\\n\\nIMPORTANTE: las métricas que recibes cubren el periodo indicado en el campo \"periodo\" del JSON. No digas \"últimas 24 horas\" salvo que ese sea el periodo.' }, { role: 'user', content: JSON.stringify(m) } ] } } }];"
+      },
       "id": "48ef75f7-7a43-4e16-b3dd-b7b6ea8a832d",
       "name": "Armar llamada P4",
       "type": "n8n-nodes-base.code",
@@ -102,14 +99,21 @@
       "position": [
         720,
         224
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Las cifras vienen de SQL; la IA solo las interpreta.\nconst m = $('Leer métricas 24 h').first().json;\nconst p = $('Leer prompt P4').first().json;\nreturn [{ json: { metricas: m, body: { model: 'gpt-4o-mini', temperature: 0.2, messages: [ { role: 'system', content: p.texto }, { role: 'user', content: JSON.stringify(m) } ] } } }];"
-      }
+      ]
     },
     {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
       "id": "8e749da8-892a-4630-bfcd-fdf1539de254",
       "name": "P4 · Resumen del líder",
       "type": "n8n-nodes-base.httpRequest",
@@ -118,37 +122,13 @@
         944,
         224
       ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "timeout": 60000
-        }
-      },
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 2000
     },
     {
-      "id": "c50fafe1-cba8-4f95-bca9-2a13b4681197",
-      "name": "Guardar resumen",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        1168,
-        224
-      ],
       "parameters": {
-        "resource": "row",
-        "operation": "create",
         "tableId": "resumenes_diarios",
-        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -161,61 +141,161 @@
             }
           ]
         }
-      }
+      },
+      "id": "c50fafe1-cba8-4f95-bca9-2a13b4681197",
+      "name": "Guardar resumen",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        224
+      ]
     },
     {
+      "parameters": {
+        "jsCode": "// Reporte ejecutivo en capas. Todo lo calcula SQL (v_reporte_lider y v_tablero_b); P4 solo aporta la línea de prioridad.\n// La foto es la captura del tablero web (flujo F); si la captura falla, se usa la dona de gestión.\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst arr = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst obj = (v) => (v && typeof v === 'object') ? v : (typeof v === 'string' ? JSON.parse(v || '{}') : {});\nconst WEB = 'https://TU_INSTANCIA.app.n8n.cloud/webhook/tablero-soporte?k=TU_LLAVE_TABLERO';\nconst bajoDemanda = $('Actualizar desde Telegram').isExecuted;\nconst r = $('Leer reporte ejecutivo').first().json || {};\nconst k = obj(r.kpis);\nconst b = $('Leer tablero B').first().json || {};\nconst kb = obj(b.kpis);\nconst periodo = b.periodo || k.periodo || 'últimas 24 h';\nconst cap = (($('Captura del tablero').first().json || {}).data || {}).screenshot || {};\nconst foto = cap.url || $('Armar gráficas').first().json.urls[0];\nconst dec = arr(r.decisiones);\nconst sem = { rojo: '🔴', amarillo: '🟡', verde: '🟢' }[r.semaforo] || '⚪';\nconst dur = (m) => { m = Math.abs(Number(m)); return m >= 60 ? Math.round(m / 60) + ' h' : m + ' min'; };\nconst plazo = (m) => (m === null || m === undefined) ? 'por confirmar' : (Number(m) < 0 ? 'vencido hace ' + dur(m) : 'vence en ' + dur(m));\nconst motivo = (r.motivo || 'Sin pendientes urgentes').replace('SLA en riesgo', 'SLA vencidos o en riesgo');\nconst p4 = (($('P4 · Resumen del líder').first().json.choices || [])[0] || {}).message?.content || '';\nconst mp = p4.match(/Prioridad de hoy:\\s*([^\\n]+)/i);\nconst prioridad = mp ? mp[1].trim() : '';\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nconst decis = dec.slice(0, 5).map(d => ({ etiqueta: d.etiqueta, numero_caso: d.numero_caso, severidad: d.severidad, pais: d.pais, cliente: d.cliente, tipo: d.tipo, plazo: plazo(d.min_restantes) }));\nconst lineas = decis.slice(0, 3).map((d, i) => (i + 1) + '. ' + esc(d.etiqueta) + ' #' + d.numero_caso + ' · ' + esc(d.severidad) + ' ' + esc(d.pais) + ' · ' + esc(d.plazo));\nconst mas = dec.length > 3 ? '\\n…y ' + (dec.length - 3) + ' más en <b>Pendientes</b>' : '';\nconst nRes = k.resueltos_24h ?? 0, nIng = k.en_ingenieria ?? 0;\nlet msg = sem + ' <b>' + (bajoDemanda ? 'Reporte actualizado' : 'Soporte') + ' · ' + fecha + '</b>\\n' + esc(motivo) + '\\n<i>Cifras: ' + esc(periodo) + '</i>\\n\\n' +\n  '📂 ' + (kb.abiertos ?? 0) + ' abiertos · ✅ ' + (kb.cerrados ?? 0) + ' cerrados\\n' +\n  '⏱ SLA 1ª respuesta ' + (kb.sla_respuesta_pct ?? 0) + ' % (' + (kb.respondidos_a_tiempo ?? 0) + ' de ' + (kb.respondidos ?? 0) + ' a tiempo)\\n' +\n  '⏰ ' + (kb.vencidos ?? 0) + ' vencidos (' + (kb.pct_vencidos ?? 0) + ' %): ' + (kb.vencidos_abiertos ?? 0) + ' siguen abiertos\\n' +\n  '✍️ ' + (k.por_aprobar ?? 0) + ' por aprobar · 🛠 ' + (k.escalamientos_abiertos ?? 0) + ' por escalar · 🚨 ' + (k.incidentes_abiertos ?? 0) + ' incidentes' +\n  (lineas.length ? '\\n\\n<b>Necesita tu decisión</b>\\n' + lineas.join('\\n') + mas : '\\n\\n✅ Nada pendiente de tu decisión.');\nconst pie = '\\n\\n👇 Toca un botón para ver el detalle o abre el tablero web';\nconst lineaPrio = prioridad ? '\\n\\n<b>Prioridad de hoy:</b> ' + esc(prioridad.length > 220 ? prioridad.slice(0, 220) + '…' : prioridad) : '';\nif ((msg + lineaPrio + pie).replace(/<[^>]+>/g, '').length <= 1000) msg += lineaPrio;\nmsg += pie;\nreturn [{ json: {\n  mensaje: msg, foto, foto_es_tablero: !!cap.url, web: WEB,\n  n_sla: k.sla_en_riesgo ?? 0, n_inc: k.incidentes_abiertos ?? 0, n_pen: dec.length, n_res: nRes, n_ing: nIng,\n  semaforo: r.semaforo || 'verde', motivo, periodo, kpis: k, tablero: b, decisiones: decis, prioridad, p4, bajo_demanda: bajoDemanda\n} }];\n"
+      },
       "id": "f80efa5f-f90d-4189-b4d7-12e0e9f1bb56",
       "name": "Componer resumen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1840,
-        0
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst texto = $('P4 · Resumen del líder').first().json.choices[0].message.content;\nconst m = $('Armar llamada P4').first().json.metricas || {};\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet cuerpo = esc(texto);\nfor (const t of titulos) cuerpo = cuerpo.split(t).join('<b>' + t + '</b>');\n// Detalle fijo desde SQL: números de caso, desde cuándo ocurre y destino de cada patrón (no lo escribe la IA)\nconst lista = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst casos = (arr) => (arr || []).map(x => '#' + x).join(', ');\n\n// Gestión de casos (24 h): calculada en SQL (v_graficas_diarias.gestion_24h), no por la IA\nconst ge = $('Armar gráficas').first().json.gestion || {};\nconst cs = ge.casos || {};\nconst linea = (icono, nombre, k) => (ge[k] || 0) > 0 ? '\\n   ' + icono + ' ' + nombre + ': ' + ge[k] + ' · ' + esc(casos(cs[k])) : '';\nconst kb = (ge.kb_resuelto || 0) + (ge.kb_por_aprobar || 0);\nconst interno = (ge.interno_ingenieria || 0) + (ge.interno_datos || 0) + (ge.interno_manual || 0);\nconst gestion = (ge.total || 0) === 0 ? '' :\n  '\\n\\n<b>Gestión de casos (24 h)</b>' +\n  '\\n🤖 Con base de conocimiento: ' + kb + ' de ' + ge.total + ' (' + (ge.pct_kb ?? 0) + '%)' +\n  linea('✅', 'Resueltos (borrador IA aprobado)', 'kb_resuelto') +\n  linea('🕓', 'Borrador listo, por aprobar', 'kb_por_aprobar') +\n  '\\n🛠 En gestión interna: ' + interno +\n  linea('🔧', 'Escalados a Ingeniería', 'interno_ingenieria') +\n  linea('⏳', 'Esperando datos del cliente', 'interno_datos') +\n  linea('✍️', 'Borrador rechazado (manual)', 'interno_manual');\n\nconst det = [];\nconst ejemplos = [];\n// Un renglón por incidente (SQL ya agrupa las oleadas del mismo problema)\nfor (const i of lista(m.incidentes)) {\n  ejemplos.push(...(i.casos || []));\n  const oleadas = Number(i.oleadas || 1) > 1 ? ' · llegó en ' + i.oleadas + ' oleadas' : '';\n  det.push('🚨 <b>' + esc(i.firma === 'fuente_externa' ? 'Fuente externa' : 'Plataforma') + '</b> · ' + esc(i.producto) + ' ' + esc(i.pais) +\n    (i.codigo ? ' · ' + esc(i.codigo) : '') + ' · ' + esc(i.tickets) + ' casos (' + esc(casos(i.casos)) + ')' +\n    ' · desde ' + esc(i.desde) + oleadas + ' (' + esc(i.estado) + ')');\n}\nfor (const s of lista(m.sla_en_riesgo)) {\n  ejemplos.push(s.caso);\n  det.push('⏱ #' + esc(s.caso) + ' ' + esc(s.severidad) + ' · ' + esc(s.cliente) + ' · desde ' + esc(s.desde) +\n    ' · ' + esc(s.minutos_abierto) + ' de ' + esc(s.limite_min) + ' min');\n}\nfor (const p of lista(m.patrones)) {\n  ejemplos.push(...(p.casos || []));\n  det.push('🔁 ' + esc(p.patron) + ' · casos ' + esc(casos(p.casos)) + ' → <b>' + esc(p.destino || 'sin destino') + '</b>');\n}\nconst detalle = det.length ? '\\n\\n<b>Casos a revisar</b>\\n' + det.slice(0, 15).join('\\n') +\n  (ejemplos.length ? '\\n\\n💬 Pregunta por uno: <code>caso ' + esc(ejemplos[0]) + '</code> y tu pregunta.' : '') : '';\nconst fecha = $now.setZone('America/Bogota').toFormat('dd/MM HH:mm');\nreturn [{ json: { mensaje: '☀️ <b>Resumen de soporte · ' + fecha + '</b>\\n\\n' + cuerpo + gestion + detalle } }];"
-      }
+        2064,
+        -224
+      ]
     },
     {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "TU_CHAT_ID",
+        "file": "={{ $json.foto }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🌐 Abrir tablero web",
+                    "additionalFields": {
+                      "url": "={{ $json.web }}"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "=⏱ SLA en riesgo ({{ $json.n_sla }})",
+                    "additionalFields": {
+                      "callback_data": "det:sla"
+                    }
+                  },
+                  {
+                    "text": "=🚨 Incidentes ({{ $json.n_inc }})",
+                    "additionalFields": {
+                      "callback_data": "det:inc"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "=✍️ Pendientes ({{ $json.n_pen }})",
+                    "additionalFields": {
+                      "callback_data": "det:pen"
+                    }
+                  },
+                  {
+                    "text": "=✅ Resueltos ({{ $json.n_res }})",
+                    "additionalFields": {
+                      "callback_data": "det:res"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔁 Patrones",
+                    "additionalFields": {
+                      "callback_data": "det:pat"
+                    }
+                  },
+                  {
+                    "text": "📊 Más gráficas",
+                    "additionalFields": {
+                      "callback_data": "det:gra"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📝 Lectura completa",
+                    "additionalFields": {
+                      "callback_data": "det:txt"
+                    }
+                  },
+                  {
+                    "text": "🔄 Actualizar reporte",
+                    "additionalFields": {
+                      "callback_data": "rep:1"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "={{ $json.mensaje }}",
+          "parse_mode": "HTML"
+        }
+      },
       "id": "34de1d68-65e8-4d1c-baa0-3b2d6e572720",
       "name": "Enviar resumen",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2064,
-        0
+        2288,
+        -224
       ],
-      "parameters": {
-        "resource": "message",
-        "operation": "sendMessage",
-        "chatId": "TU_CHAT_ID",
-        "text": "={{ $json.mensaje }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
-        }
-      },
       "webhookId": "6ed51dc7-1df9-47c6-9932-f6856acd74b4"
     },
     {
+      "parameters": {
+        "content": "## Reporte del líder (ejecutivo)\nv_reporte_lider calcula semáforo, 4 KPIs, decisiones pendientes y el detalle de cada botón. P4 solo redacta la prioridad y la lectura del día.\nTelegram: UNA foto (dona de gestión) con el estado y 6 botones de detalle (det:sla, inc, pen, pat, gra, txt) que atiende el flujo C.\nCorreo: mismo orden; cada gráfica y cada pendiente enlaza a t.me/TU_BOT?start=<detalle>.\nLas URLs de las gráficas se guardan en resumenes_diarios.graficas para el botón «Más gráficas».",
+        "height": 448,
+        "width": 432,
+        "color": 4
+      },
       "id": "fdeab72f-e23f-4693-b216-2e7edb7c7beb",
       "name": "Sticky Note 44acf059",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -32,
-        -96
-      ],
-      "parameters": {
-        "content": "## Resumen diario del líder (P4)\nLa vista SQL v_resumen_diario calcula tickets, SLA en riesgo, incidentes, patrones (con su destino por regla fija), calidad de borradores y costo. P4 solo redacta: no elige destinos ni calcula cifras.\nGráficas y gestión (KB vs interna): v_graficas_diarias (solo conteos) → QuickChart → álbum en Telegram e imágenes en el correo.\nSe envía a Telegram y por correo al líder (tabla destinatarios_correo); cada envío queda en correos_enviados.",
-        "color": 4,
-        "width": 432,
-        "height": 448
-      }
+        -224,
+        -304
+      ]
     },
     {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "destinatarios_correo",
+        "returnAll": true,
+        "filterType": "none"
+      },
       "id": "9f95691e-a5d1-4b37-a442-0d14cb0dc2ce",
       "name": "Leer destinatarios",
       "type": "n8n-nodes-base.supabase",
@@ -224,16 +304,12 @@
         1616,
         400
       ],
-      "parameters": {
-        "filterType": "none",
-        "operation": "getAll",
-        "resource": "row",
-        "returnAll": true,
-        "tableId": "destinatarios_correo"
-      },
       "executeOnce": true
     },
     {
+      "parameters": {
+        "jsCode": "// Correo ejecutivo: semáforo, tablero B (matriz severidad × SLA con abiertos y cerrados), decisiones, gráficas y lectura del día.\n// Cada celda, total y caso del tablero abre el detalle en la web (flujo F); los botones de decisión abren el bot de Telegram.\n// Paleta pública de Truora, sin logo. Cifras desde SQL (v_tablero_b, v_reporte_lider). El periodo lo fija config_reporte.\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst arr = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst obj = (v) => (v && typeof v === 'object') ? v : (typeof v === 'string' ? JSON.parse(v || '{}') : {});\nconst dest = Object.fromEntries($('Leer destinatarios').all().map(i => [i.json.rol, i.json.correo]));\nconst c = $('Componer resumen').first().json;\nconst gr = $('Armar gráficas').first().json;\nconst BOT = 'https://t.me/TU_BOT?start=';\nconst WEB = c.web;\nconst w = (p) => (WEB + Object.entries(p || {}).map(([a, b]) => '&' + a + '=' + encodeURIComponent(b)).join('')).replace(/&/g, '&amp;');\nconst fecha = $now.setZone('America/Bogota').setLocale('es').toFormat(\"cccc d 'de' LLLL\");\nconst hora = $now.setZone('America/Bogota').toFormat('HH:mm');\nconst S = { rojo: ['#D92D20', '#FEE4E2', 'Rojo'], amarillo: ['#B54708', '#FEF0C7', 'Amarillo'], verde: ['#067647', '#DCFAE6', 'Verde'] }[c.semaforo] || ['#475569', '#F1F5F9', ''];\nconst b = c.tablero || {};\nconst kb = obj(b.kpis), tot = obj(b.totales), mx = arr(b.matriz), pa = arr(b.por_atender), pe = arr(b.pendientes);\nconst periodo = c.periodo || 'últimas 24 h';\nconst dur = (m) => { m = Math.abs(Math.round(Number(m) || 0)); if (m < 60) return m + ' min'; if (m < 1440) { const h = Math.floor(m / 60), r = m % 60; return h + ' h' + (r ? ' ' + r + ' min' : ''); } const d = Math.floor(m / 1440), h = Math.round((m % 1440) / 60); return d + ' d' + (h ? ' ' + h + ' h' : ''); };\nconst boton = (href, t) => '<a href=\"' + href + '\" style=\"display:inline-block;background:#3C1AE9;color:#FFFFFF;text-decoration:none;font-size:13px;font-weight:bold;padding:7px 14px;border-radius:6px\">' + t + '</a>';\n\n// KPIs del tablero\nconst kpi = (href, l, n, s, osc) => '<td width=\"25%\" style=\"background:' + (osc ? '#01022E' : '#F5F6FB') + ';border-radius:8px;padding:12px 8px;vertical-align:top\"><a href=\"' + href + '\" style=\"text-decoration:none\">' +\n  '<div style=\"font-size:12px;font-weight:bold;color:' + (osc ? '#FFB98A' : '#4A4B6A') + '\">' + l + '</div><div style=\"font-size:26px;font-weight:bold;color:' + (osc ? '#FFFFFF' : '#01022E') + ';margin:2px 0\">' + n + '</div>' +\n  '<div style=\"font-size:11px;color:' + (osc ? '#D9DAEC' : '#4A4B6A') + '\">' + s + '</div></a></td>';\nconst kpis = '<table width=\"100%\" cellspacing=\"6\" cellpadding=\"0\" style=\"border-collapse:separate\"><tr>' +\n  kpi(w({ v: 'lista', f: 'abiertos' }), 'Abiertos', kb.abiertos ?? 0, (kb.pct_abiertos ?? 0) + ' % de ' + (kb.total ?? 0)) +\n  kpi(w({ v: 'lista', f: 'cerrados' }), 'Cerrados', kb.cerrados ?? 0, (kb.pct_cerrados ?? 0) + ' % de ' + (kb.total ?? 0)) +\n  kpi(w({ v: 'lista', f: 'respondidos' }), 'SLA 1ª respuesta', (kb.sla_respuesta_pct ?? 0) + ' %', (kb.respondidos_a_tiempo ?? 0) + ' de ' + (kb.respondidos ?? 0) + ' respondidos a tiempo') +\n  kpi(w({ v: 'lista', f: 'vencidos' }), 'Vencidos', (kb.vencidos ?? 0) + ' <span style=\"font-size:14px;color:#FFB98A\">' + (kb.pct_vencidos ?? 0) + ' %¹</span>', (kb.vencidos_abiertos ?? 0) + ' abiertos ' + (kb.pct_venc_abiertos ?? 0) + ' %² · ' + (kb.vencidos_cerrados ?? 0) + ' cerrados ' + (kb.pct_venc_cerrados ?? 0) + ' %²', true) +\n  '</tr></table>';\n\n// Matriz severidad × estado de SLA\nconst COLS = [['ab_tiempo', '#9BD2F3', '#01022E'], ['ab_riesgo', '#EE792F', '#01022E'], ['ab_vencido', '#01022E', '#FFFFFF'], ['ce_sla', '#E3EFFA', '#01022E'], ['ce_fuera', '#01022E', '#FFFFFF']];\nconst LIM = { P1: '30 min', P2: '2 h', P3: '24 h', P4: '48 h' };\nconst celda = (s, [col, bg, fg]) => { const n = Number(s[col] || 0);\n  return '<td align=\"center\" style=\"padding:3px\"><' + (n ? 'a href=\"' + w({ v: 'lista', f: col, sev: s.sev }) + '\"' : 'div') + ' style=\"display:block;background:' + (n ? bg : '#F3F3F7') + ';color:' + (n ? fg : '#8A8BA3') + ';border-radius:8px;padding:9px 0;font-size:16px;font-weight:bold;text-decoration:none\">' + n + '</' + (n ? 'a' : 'div') + '></td>'; };\nconst TOT = { ab_tiempo: ['#F3F2FE', '#01022E', '#3C1AE9'], ab_riesgo: ['#FDEBDD', '#01022E', '#9A3F0C'], ab_vencido: ['#01022E', '#FFFFFF', '#FFB98A'], ce_sla: ['#E3EFFA', '#01022E', '#1F5F8B'], ce_fuera: ['#01022E', '#FFFFFF', '#FFB98A'] };\nconst celdaTot = ([col]) => { const t = tot[col] || {}; const [bg, fg, pc] = TOT[col];\n  return '<td align=\"center\" style=\"padding:3px\"><a href=\"' + w({ v: 'lista', f: col }) + '\" style=\"display:block;background:' + bg + ';border-radius:8px;padding:8px 0;text-decoration:none\">' +\n    '<div style=\"font-size:20px;font-weight:bold;color:' + fg + '\">' + (t.n ?? 0) + '</div><div style=\"font-size:12px;font-weight:bold;color:' + pc + '\">' + (t.pct ?? 0) + ' %</div></a></td>'; };\nconst th = (t) => '<td align=\"center\" style=\"font-size:11px;font-weight:bold;color:#4A4B6A;padding:4px 2px\">' + t + '</td>';\nconst matriz = '<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;table-layout:fixed\">' +\n  '<tr><td width=\"14%\"></td><td colspan=\"3\" align=\"center\" style=\"font-size:13px;font-weight:bold;color:#01022E;padding-bottom:6px;border-bottom:3px solid #3C1AE9\">Abiertos · ' + (kb.abiertos ?? 0) + '</td>' +\n  '<td colspan=\"2\" align=\"center\" style=\"font-size:13px;font-weight:bold;color:#01022E;padding-bottom:6px;border-bottom:3px solid #9BD2F3\">Cerrados · ' + (kb.cerrados ?? 0) + '</td></tr>' +\n  '<tr><td></td>' + th('En tiempo') + th('En riesgo') + th('Vencido') + th('En SLA') + th('Fuera de SLA') + '</tr>' +\n  mx.map(s => '<tr><td style=\"padding:3px 0\"><div style=\"font-size:15px;font-weight:bold;color:#01022E\">' + esc(s.sev) + '</div><div style=\"font-size:10px;color:#4A4B6A\">' + LIM[s.sev] + '</div></td>' + COLS.map(cc => celda(s, cc)).join('') + '</tr>').join('') +\n  '<tr><td style=\"padding-top:8px;border-top:2px solid #01022E;font-size:14px;font-weight:bold;color:#01022E\">Total</td>' + COLS.map(cc => celdaTot(cc).replace('<td align=\"center\" style=\"padding:3px\">', '<td align=\"center\" style=\"padding:8px 3px 3px;border-top:2px solid #01022E\">')).join('') + '</tr>' +\n  '<tr><td></td><td colspan=\"3\" align=\"center\" style=\"font-size:11px;color:#4A4B6A;padding-top:4px\">% sobre los ' + (kb.abiertos ?? 0) + ' abiertos</td><td colspan=\"2\" align=\"center\" style=\"font-size:11px;color:#4A4B6A;padding-top:4px\">% sobre los ' + (kb.cerrados ?? 0) + ' cerrados</td></tr></table>';\n\n// Abiertos por atender\nconst nV = pa.filter(x => x.estado === 'vencido').length;\nconst filasPA = pa.slice(0, 6).map(x => { const v = x.estado === 'vencido'; const m = Number(x.min);\n  return '<tr><td style=\"padding:8px 0;border-top:1px solid #2E3070;width:92px\"><span style=\"display:inline-block;background:' + (v ? '#FFB98A' : '#EE792F') + ';color:#01022E;font-size:10px;font-weight:bold;padding:3px 6px;border-radius:4px\">' + (v ? 'VENCIDO' : 'EN RIESGO') + '</span></td>' +\n    '<td style=\"padding:8px 4px;border-top:1px solid #2E3070;font-size:13px;color:#FFFFFF\"><a href=\"' + w({ v: 'caso', c: x.caso }) + '\" style=\"color:#FFFFFF;text-decoration:none\"><b>#' + esc(x.caso) + ' ' + esc(x.sev) + '</b> · ' + esc(x.asunto) + ' · ' + esc(x.pendiente) + '</a></td>' +\n    '<td align=\"right\" style=\"padding:8px 0;border-top:1px solid #2E3070;font-size:13px;font-weight:bold;color:' + (v ? '#FFB98A' : '#FFFFFF') + ';white-space:nowrap\">' + (m < 0 ? '+' + dur(m) : 'quedan ' + dur(m)) + '</td></tr>'; }).join('');\nconst porAtender = '<div style=\"background:#01022E;border-radius:10px;padding:14px 16px;margin-top:14px\">' +\n  '<div style=\"font-size:15px;font-weight:bold;color:#FFFFFF;margin-bottom:6px\">Abiertos por atender · ' + pa.length + ' <span style=\"font-size:12px;font-weight:normal;color:#D9DAEC\">' + nV + ' vencidos · ' + (pa.length - nV) + ' en riesgo</span></div>' +\n  (pa.length ? '<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">' + filasPA + '</table>' + (pa.length > 6 ? '<div style=\"font-size:12px;color:#D9DAEC;padding-top:6px\"><a href=\"' + w({ v: 'lista', f: 'abiertos' }) + '\" style=\"color:#9BD2F3\">…y ' + (pa.length - 6) + ' más en el tablero web</a></div>' : '') : '<div style=\"font-size:13px;color:#D9DAEC\">Ningún abierto vencido ni en riesgo.</div>') + '</div>';\n\n// Pendientes por responsable\nconst RESP = { lider: ['Tú (líder)', '#3C1AE9'], cliente: ['Cliente', '#EE792F'], ingenieria: ['Ingeniería', '#01022E'] };\nconst grupos = ['lider', 'cliente', 'ingenieria'].map(x => pe.find(g => g.responsable === x) || { responsable: x, n: 0, acciones: [] });\nconst totalAb = grupos.reduce((s, g) => s + Number(g.n || 0), 0);\nconst pendientes = '<div style=\"border:1px solid #E8EBF3;border-radius:10px;padding:14px 16px;margin-top:14px\">' +\n  '<div style=\"font-size:15px;font-weight:bold;color:#01022E\">Pendientes de los ' + totalAb + ' abiertos <span style=\"font-size:12px;font-weight:normal;color:#4A4B6A\">· quién tiene la siguiente acción</span></div>' +\n  '<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin-top:8px\"><tr>' + grupos.map(g => '<td width=\"33%\" style=\"vertical-align:top;padding-right:8px\"><a href=\"' + w({ v: 'lista', f: 'resp_' + g.responsable }) + '\" style=\"text-decoration:none;color:#01022E\">' +\n    '<div style=\"border-top:4px solid ' + RESP[g.responsable][1] + ';padding-top:6px\"><span style=\"font-size:13px;font-weight:bold\">' + RESP[g.responsable][0] + '</span> <span style=\"font-size:20px;font-weight:bold;float:right\">' + g.n + '</span></div>' +\n    '<div style=\"font-size:12px;color:#2B2C4A;line-height:1.5;clear:both\">' + (arr(g.acciones).length ? arr(g.acciones).map(a => a.n + ' ' + esc(String(a.pendiente).charAt(0).toLowerCase() + String(a.pendiente).slice(1))).join('<br>') : 'Nada pendiente') + '</div></a></td>').join('') + '</tr></table></div>';\n\nconst nota = '<div style=\"font-size:11px;color:#64748B;line-height:1.5;margin-top:10px\">% de abiertos sobre los ' + (kb.abiertos ?? 0) + ' abiertos · % de cerrados sobre los ' + (kb.cerrados ?? 0) + ' cerrados · ¹ vencidos sobre los ' + (kb.total ?? 0) + ' casos · ² reparto sobre los ' + (kb.vencidos ?? 0) + ' vencidos. ' +\n  'Vencido: pasó el límite de su severidad sin respuesta aprobada (P1 30 min · P2 2 h · P3 24 h · P4 48 h). En riesgo: más del 80 % del límite. SLA 1ª respuesta: respondidos dentro del límite sobre todos los respondidos, abiertos o cerrados.</div>';\n\nconst decis = (c.decisiones || []).map(d =>\n  '<tr><td style=\"padding:10px 0;border-top:1px solid #E8EBF3\"><div style=\"font-size:14px;color:#01022E;font-weight:bold\">' + esc(d.etiqueta) + ' #' + d.numero_caso + ' · ' + esc(d.severidad) + ' ' + esc(d.pais) + '</div>' +\n  '<div style=\"font-size:12px;color:#64748B\">' + esc(d.cliente) + ' · ' + esc(d.plazo) + '</div></td>' +\n  '<td align=\"right\" style=\"padding:10px 0;border-top:1px solid #E8EBF3\">' + boton(BOT + 'pen', 'Revisar') + '</td></tr>').join('');\nconst bloqueDec = decis ? '<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">' + decis + '</table>' : '<p style=\"color:#067647\">Nada pendiente de tu decisión.</p>';\nconst destinos = ['pen', 'inc', 'sla', 'pat'];\nconst imgs = (gr.urls || []).map((u, i) =>\n  '<div style=\"margin:0 0 18px\"><a href=\"' + BOT + destinos[i] + '\" style=\"text-decoration:none\">' +\n  '<img src=\"' + u.replace(/&/g, '&amp;') + '\" alt=\"' + esc(gr.titulos[i]) + '\" width=\"632\" style=\"display:block;width:100%;max-width:632px;height:auto;border:1px solid #E8EBF3;border-radius:6px\">' +\n  '<div style=\"font-size:12px;color:#3C1AE9;margin-top:4px\">' + esc(gr.titulos[i]) + ' · ver detalle en Telegram →</div></a></div>').join('');\nconst titulos = ['Estado:', 'SLA en riesgo:', 'Incidentes:', 'Patrones:', 'Calidad de la IA:', 'Prioridad de hoy:'];\nlet lectura = esc(c.p4 || '');\nfor (const t of titulos) lectura = lectura.split(t).join('<b>' + t + '</b>');\nlectura = lectura.replace(/\\n/g, '<br>');\nconst h2 = (t) => '<div style=\"font-size:16px;font-weight:bold;color:#3C1AE9;margin:22px 0 10px\">' + t + '</div>';\nconst html =\n  '<div style=\"background:#F5F6FB;padding:24px 12px;font-family:Arial,Helvetica,sans-serif\">' +\n  '<div style=\"max-width:680px;margin:0 auto;background:#FFFFFF;border:1px solid #E8EBF3;border-radius:10px;overflow:hidden\">' +\n  '<div style=\"background:#01022E;padding:20px 24px\">' +\n    '<div style=\"font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#9BD2F3\">Soporte · Reporte del líder</div>' +\n    '<div style=\"font-size:22px;font-weight:bold;color:#FFFFFF;margin-top:6px\">' + fecha + ' · ' + hora + '</div></div>' +\n  '<div style=\"background:' + S[1] + ';padding:14px 24px;border-bottom:1px solid #E8EBF3\">' +\n    '<span style=\"display:inline-block;background:' + S[0] + ';color:#FFFFFF;font-size:12px;font-weight:bold;padding:3px 10px;border-radius:10px\">' + S[2] + '</span> ' +\n    '<span style=\"font-size:15px;font-weight:bold;color:' + S[0] + '\">' + esc(c.motivo) + '</span></div>' +\n  '<div style=\"padding:0 18px\">' + h2('Severidad × estado de SLA <span style=\"font-size:12px;font-weight:normal;color:#64748B\">· ' + esc(periodo) + ' · toca un número para ver los casos</span>') +\n    kpis + '<div style=\"margin-top:10px\">' + matriz + '</div>' + porAtender + pendientes + nota +\n    '<div style=\"text-align:center;margin-top:16px\">' + boton(w({}), 'Abrir tablero web') + '</div></div>' +\n  '<div style=\"padding:0 24px\">' + h2('Necesita tu decisión') + bloqueDec +\n    (c.prioridad ? '<div style=\"margin-top:14px;padding:12px 14px;background:#F2EEFF;border-radius:6px;font-size:14px;color:#01022E\"><b>Prioridad de hoy:</b> ' + esc(c.prioridad) + '</div>' : '') +\n    h2('Gráficas · toca una para ver el detalle') + imgs +\n    h2('Lectura del día') + '<div style=\"font-size:14px;line-height:1.6;color:#01022E\">' + lectura + '</div></div>' +\n  '<div style=\"background:#F9FAFE;border-top:1px solid #E8EBF3;padding:14px 24px;margin-top:20px;font-size:12px;color:#64748B;line-height:1.5\">' +\n    'Tablero, cifras y pendientes calculados en SQL (v_tablero_b, v_reporte_lider); la IA solo redacta la lectura del día. Periodo de los cerrados: ' + esc(periodo) + '. Las cifras del tablero llevan al detalle en la web; los botones de decisión abren el bot de Telegram para aprobar. DEMO: datos sintéticos.' +\n  '</div></div></div>';\nconst sem = { rojo: '🔴', amarillo: '🟡', verde: '🟢' }[c.semaforo] || '';\nreturn [{ json: { para: dest.lider, asunto: sem + ' Soporte · ' + c.motivo + ' · ' + $now.setZone('America/Bogota').setLocale('es').toFormat('ccc d LLL'), html } }];\n"
+      },
       "id": "3fca752f-066d-4423-9925-94dc570cf1be",
       "name": "Armar correo del resumen",
       "type": "n8n-nodes-base.code",
@@ -241,14 +317,18 @@
       "position": [
         1840,
         400
-      ],
-      "parameters": {
-        "jsCode": "// El mismo resumen de Telegram, en HTML para correo, con la paleta pública de Truora (sin logo) y las 4 gráficas.\nconst dest = Object.fromEntries($('Leer destinatarios').all().map(i => [i.json.rol, i.json.correo]));\nconst msg = $('Componer resumen').first().json.mensaje;\nconst gr = $('Armar gráficas').first().json;\nconst fecha = $now.setZone('America/Bogota').setLocale('es').toFormat(\"cccc d 'de' LLLL yyyy\");\nconst hora = $now.setZone('America/Bogota').toFormat('HH:mm');\n// Cuerpo: se quita la primera línea (el título va en el encabezado) y se aplica estilo\nconst cuerpo = msg.replace(/^[^\\n]*\\n\\n/, '')\n  .replace(/<code>/g, '<code style=\"background:#F2EEFF;color:#3C1AE9;padding:1px 6px;border-radius:4px\">')\n  .replace(/\\n/g, '<br>');\nconst imgs = (gr.urls || []).map((u, i) =>\n  '<div style=\"margin:0 0 18px\"><div style=\"font-size:13px;font-weight:bold;color:#01022E;margin:0 0 6px\">' + gr.titulos[i] + '</div>' +\n  '<img src=\"' + u.replace(/&/g, '&amp;') + '\" alt=\"' + gr.titulos[i] + '\" width=\"632\" style=\"display:block;width:100%;max-width:632px;height:auto;border:1px solid #E8EBF3;border-radius:6px\"></div>').join('');\nconst html =\n  '<div style=\"background:#F5F6FB;padding:24px 12px;font-family:Arial,Helvetica,sans-serif\">' +\n  '<div style=\"max-width:680px;margin:0 auto;background:#FFFFFF;border:1px solid #E8EBF3;border-radius:10px;overflow:hidden\">' +\n  '<div style=\"background:#01022E;padding:22px 24px\">' +\n    '<div style=\"font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#9BD2F3\">Soporte · Resumen diario del líder</div>' +\n    '<div style=\"font-size:22px;font-weight:bold;color:#FFFFFF;margin-top:6px\">' + fecha + '</div>' +\n    '<div style=\"font-size:13px;color:#CBD5E1;margin-top:2px\">Corte ' + hora + ' (hora Bogotá) · últimas 24 h · ' + (gr.tickets_24h ?? 0) + ' tickets</div>' +\n  '</div>' +\n  '<div style=\"height:4px;background:#EE792F\"></div>' +\n  '<div style=\"padding:22px 24px;font-size:14px;line-height:1.6;color:#01022E\">' + cuerpo + '</div>' +\n  '<div style=\"padding:0 24px 8px\"><div style=\"font-size:16px;font-weight:bold;color:#3C1AE9;border-top:1px solid #E8EBF3;padding-top:18px;margin-bottom:14px\">📊 Gráficas</div>' + imgs + '</div>' +\n  '<div style=\"background:#F9FAFE;border-top:1px solid #E8EBF3;padding:14px 24px;font-size:12px;color:#64748B;line-height:1.5\">' +\n    'Cifras calculadas en SQL (v_resumen_diario y v_graficas_diarias); la IA solo las redacta. Gráficas generadas con QuickChart a partir de conteos agregados, sin datos de tickets. DEMO: datos sintéticos.' +\n  '</div></div></div>';\nreturn [{ json: { para: dest.lider, asunto: 'Resumen de soporte · ' + $now.setZone('America/Bogota').setLocale('es').toFormat('ccc d LLL yyyy'), html } }];",
-        "language": "javaScript",
-        "mode": "runOnceForAllItems"
-      }
+      ]
     },
     {
+      "parameters": {
+        "sendTo": "={{ $json.para }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Soporte · Copiloto (demo)"
+        }
+      },
       "id": "c853b73c-2bb3-4774-af0e-4d4a201a0344",
       "name": "Enviar resumen por correo",
       "type": "n8n-nodes-base.gmail",
@@ -257,32 +337,12 @@
         2064,
         400
       ],
-      "parameters": {
-        "emailType": "html",
-        "message": "={{ $json.html }}",
-        "operation": "send",
-        "options": {
-          "appendAttribution": false,
-          "senderName": "Soporte · Copiloto (demo)"
-        },
-        "resource": "message",
-        "sendTo": "={{ $json.para }}",
-        "subject": "={{ $json.asunto }}"
-      },
-      "onError": "continueRegularOutput",
-      "webhookId": "b17cc66f-0239-43d4-b6d3-9d5e4de549f1"
+      "webhookId": "b17cc66f-0239-43d4-b6d3-9d5e4de549f1",
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "61472173-405b-4a8f-9d4c-80b3590a9ee9",
-      "name": "Registrar correo del resumen",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        2288,
-        400
-      ],
       "parameters": {
-        "dataToSend": "defineBelow",
+        "tableId": "correos_enviados",
         "fieldsUi": {
           "fieldValues": [
             {
@@ -318,13 +378,24 @@
               "fieldValue": "={{ $json.id ? '' : String(($json.error && ($json.error.message || $json.error)) || 'sin respuesta de Gmail') }}"
             }
           ]
-        },
-        "operation": "create",
-        "resource": "row",
-        "tableId": "correos_enviados"
-      }
+        }
+      },
+      "id": "61472173-405b-4a8f-9d4c-80b3590a9ee9",
+      "name": "Registrar correo del resumen",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2288,
+        400
+      ]
     },
     {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "v_graficas_diarias",
+        "limit": 1,
+        "filterType": "none"
+      },
       "id": "186ced36-6b09-44d2-ba3c-96839e11a657",
       "name": "Leer datos de gráficas",
       "type": "n8n-nodes-base.supabase",
@@ -333,18 +404,13 @@
         1392,
         0
       ],
-      "parameters": {
-        "filterType": "none",
-        "limit": 1,
-        "operation": "getAll",
-        "resource": "row",
-        "returnAll": false,
-        "tableId": "v_graficas_diarias"
-      },
       "alwaysOutputData": true,
       "executeOnce": true
     },
     {
+      "parameters": {
+        "jsCode": "// Gráficas a partir de conteos agregados en SQL (v_graficas_diarias). No viaja texto de tickets ni datos personales.\n// Paleta tomada del sitio público de Truora (sin logos). Chart.js v2 en QuickChart; la config va como JS para usar funciones.\n// URLs completas: no vencen (las cortas gratuitas vencen a los 3 días). El periodo lo fija config_reporte.\nconst g = $('Leer datos de gráficas').first().json || {};\nconst arr = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst obj = (v) => (v && typeof v === 'object') ? v : (typeof v === 'string' ? JSON.parse(v || '{}') : {});\nconst J = JSON.stringify;\nconst C = { morado: '#3C1AE9', naranja: '#EE792F', marino: '#01022E', celeste: '#9BD2F3', moradoClaro: '#A99BF5', naranjaClaro: '#F6B98F', gris: '#CBD5E1' };\nconst CLAROS = [C.celeste, C.moradoClaro, C.naranjaClaro, C.gris];\nconst GRID = '#E8EBF3', TICK = '#475569';\nconst url = (cfg) => 'https://quickchart.io/chart?w=900&h=500&bkg=white&f=png&c=' + encodeURIComponent(cfg);\nconst ge = obj(g.gestion_24h);\nconst P = ge.periodo || 'últimas 24 h';\n\nconst DL_SHOW = 'function(c){return c.dataset.data[c.dataIndex]>0}';\nconst DL_COLOR = 'function(c){var b=c.dataset.backgroundColor;b=Array.isArray(b)?b[c.dataIndex]:b;return ' + J(CLAROS) + '.indexOf(b)>=0?\"' + C.marino + '\":\"#FFFFFF\"}';\nconst titulo = (t) => 'title:{display:true,text:' + J(t) + ',fontSize:20,fontStyle:\"bold\",fontColor:\"' + C.marino + '\",padding:20}';\nconst leyenda = (pos) => 'legend:{position:\"' + pos + '\",labels:{fontColor:\"#334155\",fontSize:14,boxWidth:14,padding:18}}';\nconst eje = (stacked, grid) => '{stacked:' + stacked + ',gridLines:{display:' + grid + ',color:\"' + GRID + '\",zeroLineColor:\"' + GRID + '\",drawBorder:false},ticks:{beginAtZero:true,precision:0,fontColor:\"' + TICK + '\",fontSize:14,padding:6}}';\nconst etiquetasBarras = 'datalabels:{display:' + DL_SHOW + ',color:' + DL_COLOR + ',font:{weight:\"bold\",size:15}}';\n\n// 0) Gestión de casos: base de conocimiento vs interna\nconst total = Number(ge.total || 0);\nconst pct = (n) => total ? Math.round(100 * n / total) : 0;\nconst cats = [\n  ['kb_resuelto', 'KB · resuelto', C.morado],\n  ['kb_por_aprobar', 'KB · por aprobar', C.moradoClaro],\n  ['interno_ingenieria', 'Interno · Ingeniería', C.naranja],\n  ['interno_datos', 'Interno · esperando datos', C.naranjaClaro],\n  ['interno_manual', 'Interno · manual', C.marino]\n].filter(([k]) => Number(ge[k] || 0) > 0);\nconst v0 = cats.length ? cats.map(c => Number(ge[c[0]])) : [1];\nconst c0 = '{type:\"doughnut\",data:{labels:' + J(cats.length ? cats.map(c => c[1] + ': ' + ge[c[0]] + ' (' + pct(ge[c[0]]) + '%)') : ['Sin casos']) +\n  ',datasets:[{data:' + J(v0) + ',backgroundColor:' + J(cats.length ? cats.map(c => c[2]) : [C.gris]) + ',borderColor:\"#FFFFFF\",borderWidth:4}]},' +\n  'options:{cutoutPercentage:58,layout:{padding:{left:10,right:10,top:0,bottom:10}},' +\n  titulo('Gestión de casos · ' + P + ' · ' + (ge.pct_kb ?? 0) + '% con base de conocimiento') + ',' + leyenda('right') + ',' +\n  'plugins:{datalabels:{display:' + DL_SHOW + ',color:' + DL_COLOR + ',font:{weight:\"bold\",size:16},textAlign:\"center\",' +\n  'formatter:function(v,c){var t=c.dataset.data.reduce(function(a,b){return a+b},0);return [v,Math.round(100*v/t)+\"%\"]}},' +\n  'doughnutlabel:{labels:[{text:\"' + total + '\",font:{size:40,weight:\"bold\"},color:\"' + C.marino + '\"},{text:\"casos\",font:{size:15},color:\"#64748B\"}]}}}}';\n\n// 1) Origen de la falla x severidad\nconst nombres = { truora: 'Truora (plataforma)', fuente_externa_gobierno: 'Fuente gobierno', meta_whatsapp: 'Meta / WhatsApp', integracion_cliente: 'Integración cliente', usuario_final: 'Usuario final', no_aplica: 'No aplica', indeterminado: 'Indeterminado', sin_clasificar: 'Sin clasificar' };\nconst colSev = { P1: C.naranja, P2: C.morado, P3: C.celeste, P4: C.gris };\nconst os = arr(g.origen_severidad);\nconst tot = (x) => ['P1', 'P2', 'P3', 'P4'].reduce((s, k) => s + Number(x[k] || 0), 0);\nconst sev1 = ['P1', 'P2', 'P3', 'P4'].filter(s => os.some(x => Number(x[s] || 0) > 0));\nconst c1 = '{type:\"horizontalBar\",data:{labels:' + J(os.length ? os.map(x => (nombres[x.origen] || x.origen) + ' (' + tot(x) + ')') : ['Sin tickets']) +\n  ',datasets:' + J(sev1.map(s => ({ label: s, backgroundColor: colSev[s], maxBarThickness: 56, data: os.map(x => Number(x[s] || 0)) }))) + '},' +\n  'options:{' + titulo('Tickets por origen de la falla y severidad · ' + P) + ',' + leyenda('bottom') + ',layout:{padding:{right:20}},' +\n  'scales:{xAxes:[' + eje(true, true) + '],yAxes:[' + eje(true, false) + ']},plugins:{' + etiquetasBarras + '}}}';\n\n// 2) SLA por severidad\nconst sl = arr(g.sla_por_severidad);\nconst est = [['en_plazo', 'En plazo', C.morado], ['en_riesgo', 'En riesgo (>80%)', C.naranjaClaro], ['vencido', 'Vencido', C.naranja]];\nconst c2 = '{type:\"bar\",data:{labels:' + J(sl.length ? sl.map(x => x.severidad) : ['Sin tickets']) +\n  ',datasets:' + J(est.map(([k, l, col]) => ({ label: l, backgroundColor: col, maxBarThickness: 90, data: sl.map(x => Number(x[k] || 0)) }))) + '},' +\n  'options:{' + titulo('SLA por severidad · ' + P) + ',' + leyenda('bottom') + ',' +\n  'scales:{xAxes:[' + eje(true, false) + '],yAxes:[' + eje(true, true) + ']},plugins:{' + etiquetasBarras + '}}}';\n\n// 3) Tendencia 7 días\nconst td = arr(g.tendencia_7d);\nconst maxY = Math.max(1, ...td.map(x => Number(x.total || 0)));\nconst c3 = '{type:\"line\",data:{labels:' + J(td.map(x => x.dia)) + ',datasets:' + J([\n  { label: 'Tickets', borderColor: C.morado, backgroundColor: 'rgba(60,26,233,0.10)', fill: true, borderWidth: 3, pointRadius: 5, pointBackgroundColor: C.morado, cubicInterpolationMode: 'monotone', data: td.map(x => Number(x.total || 0)) },\n  { label: 'Escalados a Ingeniería', borderColor: C.naranja, backgroundColor: C.naranja, fill: false, borderWidth: 3, pointRadius: 5, pointBackgroundColor: C.naranja, cubicInterpolationMode: 'monotone', data: td.map(x => Number(x.escalados || 0)) }\n]) + '},options:{' + titulo('Tickets por día · últimos 7 días') + ',' + leyenda('bottom') + ',' +\n  'scales:{xAxes:[' + eje(false, false) + '],yAxes:[{gridLines:{color:\"' + GRID + '\",zeroLineColor:\"' + GRID + '\",drawBorder:false},ticks:{beginAtZero:true,precision:0,suggestedMax:' + Math.ceil(maxY * 1.25) + ',fontColor:\"' + TICK + '\",fontSize:14}}]},' +\n  'plugins:{datalabels:{display:' + DL_SHOW + ',align:\"top\",anchor:\"end\",offset:4,color:function(c){return c.dataset.borderColor},font:{weight:\"bold\",size:15}}}}}';\n\nconst titulos = ['Gestión de casos: base de conocimiento vs interna (' + P + ')', 'Origen de la falla y severidad (' + P + ')', 'SLA por severidad (' + P + ')', 'Tendencia 7 días'];\nreturn [{ json: { tickets_24h: g.tickets_24h ?? 0, periodo: P, gestion: ge, titulos, urls: [url(c0), url(c1), url(c2), url(c3)] } }];"
+      },
       "id": "03d08aec-c38b-4cc3-bc90-86b6dfceffc0",
       "name": "Armar gráficas",
       "type": "n8n-nodes-base.code",
@@ -352,56 +418,142 @@
       "position": [
         1616,
         0
-      ],
-      "parameters": {
-        "jsCode": "// Gráficas a partir de conteos agregados en SQL (v_graficas_diarias). No viaja texto de tickets ni datos personales.\n// Paleta tomada del sitio público de Truora (sin logos). Chart.js v2 en QuickChart; la config va como JS para usar funciones.\n// URLs completas: no vencen (las cortas gratuitas vencen a los 3 días).\nconst g = $('Leer datos de gráficas').first().json || {};\nconst arr = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []);\nconst obj = (v) => (v && typeof v === 'object') ? v : (typeof v === 'string' ? JSON.parse(v || '{}') : {});\nconst J = JSON.stringify;\nconst C = { morado: '#3C1AE9', naranja: '#EE792F', marino: '#01022E', celeste: '#9BD2F3', moradoClaro: '#A99BF5', naranjaClaro: '#F6B98F', gris: '#CBD5E1' };\nconst CLAROS = [C.celeste, C.moradoClaro, C.naranjaClaro, C.gris];\nconst GRID = '#E8EBF3', TICK = '#475569';\nconst url = (cfg) => 'https://quickchart.io/chart?w=900&h=500&bkg=white&f=png&c=' + encodeURIComponent(cfg);\n\n// Piezas comunes (texto JS, no JSON, para poder pasar funciones a datalabels)\nconst DL_SHOW = 'function(c){return c.dataset.data[c.dataIndex]>0}';\nconst DL_COLOR = 'function(c){var b=c.dataset.backgroundColor;b=Array.isArray(b)?b[c.dataIndex]:b;return ' + J(CLAROS) + '.indexOf(b)>=0?\"' + C.marino + '\":\"#FFFFFF\"}';\nconst titulo = (t) => 'title:{display:true,text:' + J(t) + ',fontSize:20,fontStyle:\"bold\",fontColor:\"' + C.marino + '\",padding:20}';\nconst leyenda = (pos) => 'legend:{position:\"' + pos + '\",labels:{fontColor:\"#334155\",fontSize:14,boxWidth:14,padding:18}}';\nconst eje = (stacked, grid) => '{stacked:' + stacked + ',gridLines:{display:' + grid + ',color:\"' + GRID + '\",zeroLineColor:\"' + GRID + '\",drawBorder:false},ticks:{beginAtZero:true,precision:0,fontColor:\"' + TICK + '\",fontSize:14,padding:6}}';\nconst etiquetasBarras = 'datalabels:{display:' + DL_SHOW + ',color:' + DL_COLOR + ',font:{weight:\"bold\",size:15}}';\n\n// 0) Gestión de casos: base de conocimiento vs interna (dona con número y porcentaje)\nconst ge = obj(g.gestion_24h);\nconst total = Number(ge.total || 0);\nconst pct = (n) => total ? Math.round(100 * n / total) : 0;\nconst cats = [\n  ['kb_resuelto', 'KB · resuelto', C.morado],\n  ['kb_por_aprobar', 'KB · por aprobar', C.moradoClaro],\n  ['interno_ingenieria', 'Interno · Ingeniería', C.naranja],\n  ['interno_datos', 'Interno · esperando datos', C.naranjaClaro],\n  ['interno_manual', 'Interno · manual', C.marino]\n].filter(([k]) => Number(ge[k] || 0) > 0);\nconst v0 = cats.length ? cats.map(c => Number(ge[c[0]])) : [1];\nconst c0 = '{type:\"doughnut\",data:{labels:' + J(cats.length ? cats.map(c => c[1] + ': ' + ge[c[0]] + ' (' + pct(ge[c[0]]) + '%)') : ['Sin casos']) +\n  ',datasets:[{data:' + J(v0) + ',backgroundColor:' + J(cats.length ? cats.map(c => c[2]) : [C.gris]) + ',borderColor:\"#FFFFFF\",borderWidth:4}]},' +\n  'options:{cutoutPercentage:58,layout:{padding:{left:10,right:10,top:0,bottom:10}},' +\n  titulo('Gestión de casos · 24 h · ' + (ge.pct_kb ?? 0) + '% con base de conocimiento') + ',' + leyenda('right') + ',' +\n  'plugins:{datalabels:{display:' + DL_SHOW + ',color:' + DL_COLOR + ',font:{weight:\"bold\",size:16},textAlign:\"center\",' +\n  'formatter:function(v,c){var t=c.dataset.data.reduce(function(a,b){return a+b},0);return [v,Math.round(100*v/t)+\"%\"]}},' +\n  'doughnutlabel:{labels:[{text:\"' + total + '\",font:{size:40,weight:\"bold\"},color:\"' + C.marino + '\"},{text:\"casos\",font:{size:15},color:\"#64748B\"}]}}}}';\n\n// 1) Origen de la falla x severidad (barras horizontales apiladas)\nconst nombres = { truora: 'Truora (plataforma)', fuente_externa_gobierno: 'Fuente gobierno', meta_whatsapp: 'Meta / WhatsApp', integracion_cliente: 'Integración cliente', usuario_final: 'Usuario final', no_aplica: 'No aplica', indeterminado: 'Indeterminado', sin_clasificar: 'Sin clasificar' };\nconst colSev = { P1: C.naranja, P2: C.morado, P3: C.celeste, P4: C.gris };\nconst os = arr(g.origen_severidad);\nconst tot = (x) => ['P1', 'P2', 'P3', 'P4'].reduce((s, k) => s + Number(x[k] || 0), 0);\nconst sev1 = ['P1', 'P2', 'P3', 'P4'].filter(s => os.some(x => Number(x[s] || 0) > 0));\nconst c1 = '{type:\"horizontalBar\",data:{labels:' + J(os.length ? os.map(x => (nombres[x.origen] || x.origen) + ' (' + tot(x) + ')') : ['Sin tickets']) +\n  ',datasets:' + J(sev1.map(s => ({ label: s, backgroundColor: colSev[s], maxBarThickness: 56, data: os.map(x => Number(x[s] || 0)) }))) + '},' +\n  'options:{' + titulo('Tickets 24 h por origen de la falla y severidad') + ',' + leyenda('bottom') + ',layout:{padding:{right:20}},' +\n  'scales:{xAxes:[' + eje(true, true) + '],yAxes:[' + eje(true, false) + ']},plugins:{' + etiquetasBarras + '}}}';\n\n// 2) SLA por severidad (barras verticales apiladas)\nconst sl = arr(g.sla_por_severidad);\nconst est = [['en_plazo', 'En plazo', C.morado], ['en_riesgo', 'En riesgo (>80%)', C.naranjaClaro], ['vencido', 'Vencido', C.naranja]];\nconst c2 = '{type:\"bar\",data:{labels:' + J(sl.length ? sl.map(x => x.severidad) : ['Sin tickets']) +\n  ',datasets:' + J(est.map(([k, l, col]) => ({ label: l, backgroundColor: col, maxBarThickness: 90, data: sl.map(x => Number(x[k] || 0)) }))) + '},' +\n  'options:{' + titulo('SLA por severidad · últimas 24 h') + ',' + leyenda('bottom') + ',' +\n  'scales:{xAxes:[' + eje(true, false) + '],yAxes:[' + eje(true, true) + ']},plugins:{' + etiquetasBarras + '}}}';\n\n// 3) Tendencia 7 días: total vs escalados a Ingeniería (línea con valores)\nconst td = arr(g.tendencia_7d);\nconst maxY = Math.max(1, ...td.map(x => Number(x.total || 0)));\nconst c3 = '{type:\"line\",data:{labels:' + J(td.map(x => x.dia)) + ',datasets:' + J([\n  { label: 'Tickets', borderColor: C.morado, backgroundColor: 'rgba(60,26,233,0.10)', fill: true, borderWidth: 3, pointRadius: 5, pointBackgroundColor: C.morado, cubicInterpolationMode: 'monotone', data: td.map(x => Number(x.total || 0)) },\n  { label: 'Escalados a Ingeniería', borderColor: C.naranja, backgroundColor: C.naranja, fill: false, borderWidth: 3, pointRadius: 5, pointBackgroundColor: C.naranja, cubicInterpolationMode: 'monotone', data: td.map(x => Number(x.escalados || 0)) }\n]) + '},options:{' + titulo('Tickets por día · últimos 7 días') + ',' + leyenda('bottom') + ',' +\n  'scales:{xAxes:[' + eje(false, false) + '],yAxes:[{gridLines:{color:\"' + GRID + '\",zeroLineColor:\"' + GRID + '\",drawBorder:false},ticks:{beginAtZero:true,precision:0,suggestedMax:' + Math.ceil(maxY * 1.25) + ',fontColor:\"' + TICK + '\",fontSize:14}}]},' +\n  'plugins:{datalabels:{display:' + DL_SHOW + ',align:\"top\",anchor:\"end\",offset:4,color:function(c){return c.dataset.borderColor},font:{weight:\"bold\",size:15}}}}}';\n\nconst titulos = ['Gestión de casos: base de conocimiento vs interna (24 h)', 'Origen de la falla y severidad (24 h)', 'SLA por severidad (24 h)', 'Tendencia 7 días'];\nreturn [{ json: { tickets_24h: g.tickets_24h ?? 0, gestion: ge, titulos, urls: [url(c0), url(c1), url(c2), url(c3)] } }];",
-        "language": "javaScript",
-        "mode": "runOnceForAllItems"
-      }
+      ]
     },
     {
-      "id": "197dd14b-0ca2-4fbe-b52c-4a443dfb7752",
-      "name": "Enviar gráficas",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        2288,
-        0
-      ],
       "parameters": {
-        "chatId": "TU_CHAT_ID",
-        "media": {
-          "media": [
+        "operation": "update",
+        "tableId": "resumenes_diarios",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
             {
-              "additionalFields": {
-                "caption": "={{ '📊 <b>Gráficas del resumen</b> · ' + $('Armar gráficas').first().json.tickets_24h + ' tickets en 24 h\\nCifras calculadas en SQL; la IA no las toca.' }}",
-                "parse_mode": "HTML"
-              },
-              "media": "={{ $('Armar gráficas').first().json.urls[0] }}",
-              "type": "photo"
-            },
-            {
-              "media": "={{ $('Armar gráficas').first().json.urls[1] }}",
-              "type": "photo"
-            },
-            {
-              "media": "={{ $('Armar gráficas').first().json.urls[2] }}",
-              "type": "photo"
-            },
-            {
-              "media": "={{ $('Armar gráficas').first().json.urls[3] }}",
-              "type": "photo"
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Guardar resumen').first().json.id }}"
             }
           ]
         },
-        "operation": "sendMediaGroup",
-        "resource": "message"
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "graficas",
+              "fieldValue": "={{ { urls: $('Armar gráficas').first().json.urls, titulos: $('Armar gráficas').first().json.titulos } }}"
+            }
+          ]
+        }
       },
+      "id": "5e5d30ec-c03e-4c2d-b3e4-879566e647b5",
+      "name": "Guardar gráficas",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        -224
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "v_reporte_lider",
+        "limit": 1,
+        "filterType": "none"
+      },
+      "id": "a4dbf051-c44f-44c4-acaa-d03bd597679f",
+      "name": "Leer reporte ejecutivo",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1840,
+        -224
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "e08a20f5-915c-4ddb-bde5-a28d1b9eac38",
+      "name": "Actualizar desde Telegram",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $('Actualizar desde Telegram').isExecuted }}",
+              "operator": {
+                "operation": "false",
+                "singleValue": true,
+                "type": "boolean"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "d3611096-00d6-4d1b-aaad-4e323affd5af",
+      "name": "¿Enviar correo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2512,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "v_tablero_b",
+        "limit": 1,
+        "filterType": "none"
+      },
+      "id": "8b2e97ec-dcda-45b3-938e-f723e3cad9f5",
+      "name": "Leer tablero B",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1840,
+        -448
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.microlink.io/?url=' + encodeURIComponent('https://TU_INSTANCIA.app.n8n.cloud/webhook/tablero-soporte?k=TU_LLAVE_TABLERO&t=' + $now.toMillis()) + '&screenshot=true&meta=false&viewport.width=1080&viewport.height=1300&viewport.deviceScaleFactor=1&screenshot.fullPage=true&waitForTimeout=1500' }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "52445120-0388-467c-95d0-22348f40352f",
+      "name": "Captura del tablero",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2064,
+        -448
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
       "onError": "continueRegularOutput",
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 3000,
-      "webhookId": "17962ecd-ac27-4aa3-a9d1-69292841e2fb"
+      "notes": "Microlink (gratis, sin llave): captura la página del flujo F a 1080 px. El parámetro t evita que devuelva una captura en caché."
     }
   ],
   "connections": {
@@ -526,17 +678,6 @@
         ]
       ]
     },
-    "Enviar gráficas": {
-      "main": [
-        [
-          {
-            "node": "Leer destinatarios",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Guardar resumen": {
       "main": [
         [
@@ -552,7 +693,29 @@
       "main": [
         [
           {
-            "node": "Componer resumen",
+            "node": "Guardar gráficas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar gráficas": {
+      "main": [
+        [
+          {
+            "node": "Leer reporte ejecutivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar desde Telegram": {
+      "main": [
+        [
+          {
+            "node": "Leer métricas 24 h",
             "type": "main",
             "index": 0
           }
@@ -563,7 +726,51 @@
       "main": [
         [
           {
-            "node": "Enviar gráficas",
+            "node": "¿Enviar correo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Enviar correo?": {
+      "main": [
+        [
+          {
+            "node": "Leer destinatarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer reporte ejecutivo": {
+      "main": [
+        [
+          {
+            "node": "Leer tablero B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer tablero B": {
+      "main": [
+        [
+          {
+            "node": "Captura del tablero",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Captura del tablero": {
+      "main": [
+        [
+          {
+            "node": "Componer resumen",
             "type": "main",
             "index": 0
           }
@@ -572,6 +779,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "timezone": "America/Bogota",
+    "binaryMode": "separate"
   }
 }

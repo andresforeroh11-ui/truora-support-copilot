@@ -1,0 +1,199 @@
+{
+  "name": "F · Tablero web del líder",
+  "nodes": [
+    {
+      "id": "fe24d969-a523-4ee1-9e79-5c632466a28e",
+      "name": "Webhook tablero",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "tablero-soporte",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "e585a3b6-07ca-4138-8ebd-00b4510b2433"
+    },
+    {
+      "id": "7a883571-b44f-4b86-8bd0-085f5434e9d0",
+      "name": "Leer tablero",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        272,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "v_tablero_b",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "none"
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "0d7e4e7e-a600-46df-b212-d30ff72ec53a",
+      "name": "Leer casos",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        496,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "v_tablero_casos",
+        "returnAll": true,
+        "filterType": "none"
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "862d2e52-b608-412f-9258-9240fe92faff",
+      "name": "Leer caso",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        720,
+        128
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "v_caso_detalle",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "numero_caso",
+              "condition": "eq",
+              "keyValue": "={{ /^[0-9]{1,9}$/.test(String($('Webhook tablero').first().json.query.c || '')) ? $('Webhook tablero').first().json.query.c : 0 }}"
+            }
+          ]
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "ab441c84-5295-434e-a6fd-d7b0e198d807",
+      "name": "Armar página",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        128
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Tablero B del líder: página web servida por n8n. Todas las cifras vienen de SQL (v_tablero_b, v_tablero_casos, v_caso_detalle).\n// Rutas por parámetro: (sin v) tablero · v=lista&f=<filtro>[&sev=P1] · v=caso&c=<número>. Requiere la llave k.\nconst LLAVE = 'TU_LLAVE_TABLERO';\nconst BOT = 'https://t.me/TU_BOT?start=';\nconst q = ($('Webhook tablero').first().json.query) || {};\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst obj = (v) => (v && typeof v === 'object') ? v : (typeof v === 'string' && v ? JSON.parse(v) : {});\nconst arr = (v) => Array.isArray(v) ? v : (typeof v === 'string' && v ? JSON.parse(v) : []);\nconst enlace = (p) => '?' + Object.entries({ k: LLAVE, ...p }).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([a, b]) => a + '=' + encodeURIComponent(b)).join('&');\nconst dur = (m) => { m = Math.abs(Math.round(Number(m) || 0)); if (m < 60) return m + ' min'; if (m < 1440) { const h = Math.floor(m / 60), r = m % 60; return h + ' h' + (r ? ' ' + r + ' min' : ''); } const d = Math.floor(m / 1440), h = Math.round((m % 1440) / 60); return d + ' d' + (h ? ' ' + h + ' h' : ''); };\nconst ahora = $now.setZone('America/Bogota');\nconst hora = (t) => t ? DateTime.fromISO(String(t)).setZone('America/Bogota').toFormat('dd/MM HH:mm') : '—';\n\nconst CSS = `\n:root{--ink:#01022E;--mut:#4A4B6A;--bg:#F7F7FB;--card:#FFFFFF;--line:#DCDCE6;--mor:#3C1AE9;--nar:#EE792F;--cel:#9BD2F3;--pal:#E3EFFA;--gris:#F3F3F7}\n*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}\na{color:var(--mor)}a:hover{color:var(--ink)}\n.wrap{max-width:1080px;margin:0 auto;padding:40px 48px;display:flex;flex-direction:column;gap:22px}\nh1{margin:0;font-size:40px;font-weight:800;line-height:1.1}.sub{font-size:15px;color:var(--mut);margin-top:6px}\n.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}\n.kpi{display:flex;flex-direction:column;gap:4px;padding:18px 20px;border-radius:14px;background:var(--card);text-decoration:none;color:var(--ink)}\n.kpi .l{font-size:15px;color:var(--mut);font-weight:600}.kpi .n{font-size:44px;font-weight:800;line-height:1}.kpi .s{font-size:14px;color:var(--mut)}\n.kpi.osc{background:var(--ink);color:#fff}.kpi.osc .l{color:#FFB98A}.kpi.osc .s{color:#D9DAEC}.kpi .pc{font-size:20px;font-weight:700;color:#FFB98A;margin-left:10px}\n.box{padding:22px 26px;border-radius:18px;background:var(--card)}\n.mx{display:grid;grid-template-columns:76px repeat(5,minmax(0,1fr));gap:8px;align-items:stretch}\n.mx .gh{text-align:center;font-size:17px;font-weight:700;padding-bottom:8px}.mx .gh.ga{grid-column:span 3;border-bottom:3px solid var(--mor)}.mx .gh.gc{grid-column:span 2;border-bottom:3px solid var(--cel)}\n.mx .ch{text-align:center;font-size:14px;color:var(--mut);font-weight:600;padding:6px 0}\n.mx .sev{display:flex;flex-direction:column;justify-content:center}.mx .sev b{font-size:20px}.mx .sev span{font-size:12px;color:var(--mut)}\n.c{height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:700;text-decoration:none;color:var(--ink)}\n.c0{background:var(--gris);color:#8A8BA3}.ct{background:var(--cel)}.cr{background:var(--nar)}.cv{background:var(--ink);color:#fff}.cs{background:var(--pal)}.cf{background:var(--ink);color:#fff}\na.c:hover{outline:3px solid var(--mor);outline-offset:1px}\n.tot{border-top:2px solid var(--ink);margin-top:8px;padding-top:10px}\n.t{border-radius:12px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink)}\n.t .n{font-size:30px;font-weight:800;line-height:1}.t .p{font-size:16px;font-weight:800}\n.ta{background:#F3F2FE}.ta .p{color:var(--mor)}.tr{background:#FDEBDD}.tr .p{color:#9A3F0C}.tv{background:var(--ink);color:#fff}.tv .p{color:#FFB98A}.ts{background:var(--pal)}.ts .p{color:#1F5F8B}\n.base{font-size:13px;color:var(--mut);text-align:center;padding-top:6px}\n.osc-box{padding:20px 24px;border-radius:16px;background:var(--ink);color:#fff;display:flex;flex-direction:column;gap:4px}\n.hd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}.hd b{font-size:20px}.hd span{font-size:14px;color:var(--mut)}\n.osc-box .hd span{color:#D9DAEC}\n.fila{display:grid;grid-template-columns:112px 74px 46px minmax(0,1fr) 170px;gap:12px;align-items:center;font-size:16px;padding:9px 0;border-top:1px solid #2E3070;color:#fff;text-decoration:none}\n.fila:hover{background:#12134A}\n.chip{font-size:12px;font-weight:800;border-radius:6px;padding:4px 8px;text-align:center;color:var(--ink);white-space:nowrap}\n.chV{background:#FFB98A}.chR{background:var(--nar)}.chT{background:var(--cel)}.chS{background:var(--pal)}.chF{background:var(--ink);color:#fff}\n.der{text-align:right;font-weight:700}.ven{color:#FFB98A}\n.barra{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:3px;margin:12px 0 14px}\n.res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}\n.res a{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--ink);padding:8px;border-radius:10px}.res a:hover{background:var(--bg)}\n.res .top{display:flex;align-items:baseline;gap:8px}.res .top b{font-size:16px}.res .top .n{margin-left:auto;font-size:30px;font-weight:800}\n.dot{width:12px;height:12px;border-radius:3px;display:inline-block}\n.res .acc{font-size:15px;line-height:1.5;color:#2B2C4A}\n.nota{font-size:13px;line-height:1.5;color:var(--mut)}\ntable.l{width:100%;border-collapse:collapse;font-size:15px}table.l th{text-align:left;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;padding:8px;border-bottom:2px solid var(--ink)}\ntable.l td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}table.l tr:hover td{background:var(--bg)}\n.scroll{overflow-x:auto}\n.volver{font-size:15px;font-weight:600;text-decoration:none}\n.ficha{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}\n.campo .l{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;font-weight:600}.campo .v{font-size:16px;margin-top:3px;white-space:pre-wrap}\n.btn{display:inline-block;background:var(--mor);color:#fff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;min-height:44px}\n.btn:hover{background:var(--ink);color:#fff}\n@media (max-width:720px){.wrap{padding:20px 14px}h1{font-size:28px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}\n.mx{grid-template-columns:48px repeat(5,minmax(0,1fr));gap:5px}.mx .ch{font-size:11px}.c{height:42px;font-size:17px}.t .n{font-size:22px}.t .p{font-size:13px}\n.fila{grid-template-columns:90px 60px minmax(0,1fr);}.fila .x{display:none}.res{grid-template-columns:1fr}.ficha{grid-template-columns:1fr}}\n`;\nconst pagina = (titulo, cuerpo) => '<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">' +\n  '<title>' + esc(titulo) + '</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap\">' +\n  '<meta name=\"robots\" content=\"noindex\"><style>' + CSS + '</style></head><body><main class=\"wrap\">' + cuerpo + '</main></body></html>';\n\nif (q.k !== LLAVE) {\n  return [{ json: { status: 403, html: pagina('Acceso restringido', '<h1>Acceso restringido</h1><p class=\"sub\">Abre el tablero desde el enlace del reporte en Telegram o en el correo.</p>') } }];\n}\n\nconst tb = $('Leer tablero').first().json || {};\nconst k = obj(tb.kpis), tot = obj(tb.totales), mx = arr(tb.matriz), pa = arr(tb.por_atender), pe = arr(tb.pendientes);\nconst periodo = tb.periodo || 'últimas 24 h';\nconst casos = $('Leer casos').all().map(i => i.json).filter(c => c.en_tablero);\nconst LIM = { P1: '30 min', P2: '2 h', P3: '24 h', P4: '48 h' };\nconst COL = {\n  ab_tiempo: ['Abiertos en tiempo', 'ct', 'ta'], ab_riesgo: ['Abiertos en riesgo', 'cr', 'tr'], ab_vencido: ['Abiertos vencidos', 'cv', 'tv'],\n  ce_sla: ['Cerrados dentro de SLA', 'cs', 'ts'], ce_fuera: ['Cerrados fuera de SLA', 'cf', 'tv']\n};\nconst ESTADO = { en_tiempo: ['EN TIEMPO', 'chT'], en_riesgo: ['EN RIESGO', 'chR'], vencido: ['VENCIDO', 'chV'], en_sla: ['EN SLA', 'chS'], fuera_sla: ['FUERA DE SLA', 'chF'] };\nconst RESP = { lider: ['Tú (líder)', '#3C1AE9'], cliente: ['Cliente', '#EE792F'], ingenieria: ['Ingeniería', '#01022E'] };\nconst tiempo = (c) => {\n  const m = Number(c.min_restantes);\n  if (c.abierto && !c.resp_at) return m < 0 ? '+' + dur(m) + ' del límite' : 'quedan ' + dur(m);\n  return m < 0 ? 'respondido +' + dur(m) + ' tarde' : 'respondido a tiempo';\n};\nconst pie = '<div class=\"nota\"><b style=\"color:#01022E\">Cómo se calcula.</b> % de abiertos sobre los ' + (k.abiertos ?? 0) + ' abiertos · % de cerrados sobre los ' + (k.cerrados ?? 0) + ' cerrados · ¹ vencidos sobre los ' + (k.total ?? 0) + ' casos (' + (k.abiertos ?? 0) + ' + ' + (k.cerrados ?? 0) + ') · ² reparto sobre los ' + (k.vencidos ?? 0) + ' vencidos.<br>' +\n  'Vencido: pasó el límite de su severidad sin respuesta aprobada (P1 30 min · P2 2 h · P3 24 h · P4 48 h). En riesgo: más del 80 % del límite. SLA 1ª respuesta: respondidos dentro del límite sobre todos los respondidos, abiertos o cerrados (un caso respondido a tiempo cumple aunque siga en Ingeniería). Abierto: con respuesta por aprobar, escalamiento sin cerrar o datos pedidos al cliente. Cifras de cerrados: ' + esc(periodo) + '. Datos sintéticos de la demo.</div>';\n\nlet html;\nif (q.v === 'caso') {\n  const d = $('Leer caso').first().json || {};\n  const c = casos.find(x => String(x.numero_caso) === String(q.c)) || {};\n  if (!d.numero_caso) {\n    html = pagina('Caso no encontrado', '<a class=\"volver\" href=\"' + enlace({}) + '\">← Tablero</a><h1>Caso no encontrado</h1>');\n  } else {\n    const e = ESTADO[c.estado_sla] || ['—', 'chT'];\n    const campo = (l, v) => '<div class=\"campo\"><div class=\"l\">' + esc(l) + '</div><div class=\"v\">' + (v === undefined || v === null || v === '' ? '—' : esc(v)) + '</div></div>';\n    const inc = obj(d.incidente);\n    const faltan = arr(d.datos_faltantes);\n    html = pagina('Caso #' + d.numero_caso,\n      '<a class=\"volver\" href=\"' + enlace({}) + '\">← Tablero</a>' +\n      '<div><h1>Caso #' + esc(d.numero_caso) + ' · ' + esc(d.severidad) + ' · ' + esc(d.pais) + '</h1>' +\n      '<div class=\"sub\"><span class=\"chip ' + e[1] + '\">' + e[0] + '</span> &nbsp;' + esc(c.pendiente ? 'Pendiente: ' + c.pendiente + ' · a cargo de ' + ({ lider: 'ti', cliente: 'el cliente', ingenieria: 'Ingeniería' }[c.responsable] || '—') : 'Cerrado') + ' · ' + esc(c.numero_caso ? tiempo(c) : '') + '</div></div>' +\n      '<div class=\"box\"><div class=\"ficha\">' +\n        campo('Asunto', d.asunto) + campo('Cliente', d.cliente) + campo('Recibido', hora(d.recibido_at)) + campo('Producto · ambiente', [d.producto, d.ambiente].filter(Boolean).join(' · ')) +\n        campo('Origen de la falla', d.origen_falla) + campo('Código de motivo', d.codigo_motivo) + campo('Acción sugerida', d.accion_sugerida) + campo('Confianza', d.confianza !== null && d.confianza !== undefined ? Math.round(Number(d.confianza) * 100) + ' %' : '') +\n      '</div></div>' +\n      '<div class=\"box\"><div class=\"ficha\">' + campo('Descripción del cliente', d.cuerpo) + campo('Justificación de la clasificación', d.justificacion) + '</div>' +\n        (faltan.length ? '<div class=\"campo\" style=\"margin-top:14px\"><div class=\"l\">Datos faltantes</div><div class=\"v\">' + faltan.map(esc).join(' · ') + '</div></div>' : '') + '</div>' +\n      '<div class=\"box\"><div class=\"hd\"><b>' + esc(d.respuesta_tipo === 'comunicado' ? 'Comunicado' : 'Respuesta al cliente') + '</b><span>' + esc(d.respuesta_estado || 'sin borrador') + (d.revisado_at ? ' · revisado ' + hora(d.revisado_at) : '') + '</span></div>' +\n        '<div class=\"campo\" style=\"margin-top:10px\"><div class=\"v\">' + esc(d.texto_final || d.borrador || 'Sin borrador.') + '</div></div></div>' +\n      (d.escalamiento_estado ? '<div class=\"box\"><div class=\"hd\"><b>Escalamiento a Ingeniería</b><span>' + esc(d.escalamiento_estado) + (d.escalado_at ? ' · ' + hora(d.escalado_at) : '') + '</span></div><div class=\"campo\" style=\"margin-top:10px\"><div class=\"l\">Hipótesis</div><div class=\"v\">' + esc(d.hipotesis || '—') + '</div></div></div>' : '') +\n      (inc.firma ? '<div class=\"box\"><div class=\"hd\"><b>Incidente asociado</b><span>' + esc(inc.firma) + '</span></div></div>' : '') +\n      '<div><a class=\"btn\" href=\"' + BOT + 'caso_' + encodeURIComponent(d.numero_caso) + '\">Abrir en Telegram para aprobar o escalar</a></div>');\n  }\n} else if (q.v === 'lista') {\n  const f = q.f || 'todos';\n  const sev = /^P[1-4]$/.test(q.sev || '') ? q.sev : null;\n  const reglas = {\n    ab_tiempo: c => c.abierto && c.estado_sla === 'en_tiempo', ab_riesgo: c => c.abierto && c.estado_sla === 'en_riesgo', ab_vencido: c => c.abierto && c.estado_sla === 'vencido',\n    ce_sla: c => !c.abierto && c.estado_sla === 'en_sla', ce_fuera: c => !c.abierto && c.estado_sla === 'fuera_sla',\n    abiertos: c => c.abierto, cerrados: c => !c.abierto, vencidos: c => ['vencido', 'fuera_sla'].includes(c.estado_sla),\n    resp_lider: c => c.responsable === 'lider', resp_cliente: c => c.responsable === 'cliente', resp_ingenieria: c => c.responsable === 'ingenieria', respondidos: c => !!c.resp_at, todos: () => true\n  };\n  const nombre = { abiertos: 'Casos abiertos', cerrados: 'Casos cerrados', vencidos: 'Casos vencidos (abiertos y cerrados)', resp_lider: 'Pendientes tuyos', resp_cliente: 'Pendientes del cliente', resp_ingenieria: 'Pendientes de Ingeniería', respondidos: 'Casos respondidos · SLA de primera respuesta', todos: 'Todos los casos' };\n  const regla = reglas[f] || reglas.todos;\n  const orden = { vencido: 0, en_riesgo: 1, en_tiempo: 2, fuera_sla: 3, en_sla: 4 };\n  const lista = casos.filter(c => regla(c) && (!sev || c.severidad === sev))\n    .sort((a, b) => (orden[a.estado_sla] - orden[b.estado_sla]) || (Number(a.min_restantes) - Number(b.min_restantes)));\n  const titulo = (COL[f] ? COL[f][0] : (nombre[f] || nombre.todos)) + (sev ? ' · ' + sev : '');\n  const filas = lista.map(c => { const e = ESTADO[c.estado_sla] || ['—', 'chT'];\n    return '<tr><td><a href=\"' + enlace({ v: 'caso', c: c.numero_caso }) + '\"><b>#' + esc(c.numero_caso) + '</b></a></td><td><b>' + esc(c.severidad) + '</b></td><td>' + esc(c.pais) + '</td><td>' + esc(c.asunto) + '</td>' +\n      '<td><span class=\"chip ' + e[1] + '\">' + e[0] + '</span></td><td>' + esc(c.pendiente || 'Cerrado') + '</td><td style=\"white-space:nowrap\">' + esc(tiempo(c)) + '</td></tr>'; }).join('');\n  html = pagina(titulo, '<a class=\"volver\" href=\"' + enlace({}) + '\">← Tablero</a><div><h1>' + esc(titulo) + '</h1><div class=\"sub\">' + lista.length + ' casos · toca un número para ver la ficha</div></div>' +\n    '<div class=\"box scroll\">' + (lista.length ? '<table class=\"l\"><thead><tr><th>Caso</th><th>Sev.</th><th>País</th><th>Asunto</th><th>SLA</th><th>Pendiente</th><th>Tiempo</th></tr></thead><tbody>' + filas + '</tbody></table>' : '<p>No hay casos en esta celda.</p>') + '</div>' + pie);\n} else {\n  const celda = (s, col) => { const n = Number(s[col] || 0); const cls = n ? COL[col][1] : 'c0';\n    return n ? '<a class=\"c ' + cls + '\" href=\"' + enlace({ v: 'lista', f: col, sev: s.sev }) + '\" aria-label=\"' + esc(COL[col][0] + ' ' + s.sev + ': ' + n) + '\">' + n + '</a>' : '<div class=\"c c0\">0</div>'; };\n  const filasMx = mx.map(s => '<div class=\"sev\"><b>' + esc(s.sev) + '</b><span>' + LIM[s.sev] + '</span></div>' + ['ab_tiempo', 'ab_riesgo', 'ab_vencido', 'ce_sla', 'ce_fuera'].map(col => celda(s, col)).join('')).join('');\n  const totC = (col) => { const t = tot[col] || {}; return '<a class=\"t ' + COL[col][2] + '\" href=\"' + enlace({ v: 'lista', f: col }) + '\"><span class=\"n\">' + (t.n ?? 0) + '</span><span class=\"p\">' + (t.pct ?? 0) + ' %</span></a>'; };\n  const filaPA = (c) => { const v = c.estado === 'vencido'; const m = Number(c.min);\n    return '<a class=\"fila\" href=\"' + enlace({ v: 'caso', c: c.caso }) + '\"><span class=\"chip ' + (v ? 'chV' : 'chR') + '\">' + (v ? 'VENCIDO' : 'EN RIESGO') + '</span><b>#' + esc(c.caso) + '</b><b class=\"x\">' + esc(c.sev) + '</b>' +\n      '<span class=\"x\">' + esc(c.asunto) + ' · ' + esc(c.pendiente) + '</span><span class=\"der' + (v ? ' ven' : '') + '\">' + (m < 0 ? '+' + dur(m) + ' del límite' : 'quedan ' + dur(m)) + '</span></a>'; };\n  const nV = pa.filter(c => c.estado === 'vencido').length, nR = pa.length - nV;\n  const totalAb = pe.reduce((s, g) => s + Number(g.n || 0), 0);\n  const grupos = ['lider', 'cliente', 'ingenieria'].map(r => pe.find(g => g.responsable === r) || { responsable: r, n: 0, acciones: [] });\n  html = pagina('Tablero del líder',\n    '<div><h1>Severidad × estado de SLA</h1><div class=\"sub\">Cifras: ' + esc(periodo) + ' · actualizado ' + ahora.toFormat('dd/MM HH:mm') + ' · <a href=\"' + enlace({}) + '\">actualizar</a></div></div>' +\n    '<div class=\"kpis\">' +\n      '<a class=\"kpi\" href=\"' + enlace({ v: 'lista', f: 'abiertos' }) + '\"><span class=\"l\">Abiertos</span><span class=\"n\">' + (k.abiertos ?? 0) + '</span><span class=\"s\">' + (k.pct_abiertos ?? 0) + ' % de ' + (k.total ?? 0) + '</span></a>' +\n      '<a class=\"kpi\" href=\"' + enlace({ v: 'lista', f: 'cerrados' }) + '\"><span class=\"l\">Cerrados</span><span class=\"n\">' + (k.cerrados ?? 0) + '</span><span class=\"s\">' + (k.pct_cerrados ?? 0) + ' % de ' + (k.total ?? 0) + '</span></a>' +\n      '<a class=\"kpi\" href=\"' + enlace({ v: 'lista', f: 'respondidos' }) + '\"><span class=\"l\">SLA 1ª respuesta</span><span class=\"n\">' + (k.sla_respuesta_pct ?? 0) + ' %</span><span class=\"s\">' + (k.respondidos_a_tiempo ?? 0) + ' de ' + (k.respondidos ?? 0) + ' respondidos a tiempo</span></a>' +\n      '<a class=\"kpi osc\" href=\"' + enlace({ v: 'lista', f: 'vencidos' }) + '\"><span class=\"l\">Vencidos</span><span><span class=\"n\">' + (k.vencidos ?? 0) + '</span><span class=\"pc\">' + (k.pct_vencidos ?? 0) + ' %¹</span></span><span class=\"s\">' + (k.vencidos_abiertos ?? 0) + ' abiertos ' + (k.pct_venc_abiertos ?? 0) + ' %² · ' + (k.vencidos_cerrados ?? 0) + ' cerrados ' + (k.pct_venc_cerrados ?? 0) + ' %²</span></a>' +\n    '</div>' +\n    '<div class=\"box\"><div class=\"mx\">' +\n      '<div></div><div class=\"gh ga\">Abiertos · ' + (k.abiertos ?? 0) + '</div><div class=\"gh gc\">Cerrados · ' + (k.cerrados ?? 0) + '</div>' +\n      '<div></div><div class=\"ch\">En tiempo</div><div class=\"ch\">En riesgo</div><div class=\"ch\">Vencido</div><div class=\"ch\">En SLA</div><div class=\"ch\">Fuera de SLA</div>' +\n      filasMx +\n    '</div><div class=\"mx tot\"><div class=\"sev\"><b>Total</b></div>' + ['ab_tiempo', 'ab_riesgo', 'ab_vencido', 'ce_sla', 'ce_fuera'].map(totC).join('') + '</div>' +\n    '<div class=\"mx\"><div></div><div class=\"base\" style=\"grid-column:span 3\">% sobre los ' + (k.abiertos ?? 0) + ' abiertos</div><div class=\"base\" style=\"grid-column:span 2\">% sobre los ' + (k.cerrados ?? 0) + ' cerrados</div></div></div>' +\n    '<div class=\"osc-box\"><div class=\"hd\"><b>Abiertos por atender · ' + pa.length + '</b><span>' + nV + ' vencidos · ' + nR + ' en riesgo</span></div>' +\n      (pa.length ? pa.slice(0, 8).map(filaPA).join('') + (pa.length > 8 ? '<a class=\"fila\" href=\"' + enlace({ v: 'lista', f: 'ab_vencido' }) + '\"><span></span><span></span><span></span><span>…y ' + (pa.length - 8) + ' más</span><span></span></a>' : '') : '<div style=\"padding:8px 0;color:#D9DAEC\">Ningún abierto vencido ni en riesgo.</div>') + '</div>' +\n    '<div class=\"box\"><div class=\"hd\"><b>Pendientes de los ' + totalAb + ' abiertos</b><span>quién tiene la siguiente acción</span></div>' +\n      '<div class=\"barra\">' + grupos.filter(g => g.n > 0).map(g => '<div style=\"flex:' + g.n + ';background:' + RESP[g.responsable][1] + '\"></div>').join('') + '</div>' +\n      '<div class=\"res\">' + grupos.map(g => '<a href=\"' + enlace({ v: 'lista', f: 'resp_' + g.responsable }) + '\"><div class=\"top\"><span class=\"dot\" style=\"background:' + RESP[g.responsable][1] + '\"></span><b>' + RESP[g.responsable][0] + '</b><span class=\"n\">' + g.n + '</span></div>' +\n        '<div class=\"acc\">' + (arr(g.acciones).length ? arr(g.acciones).map(a => a.n + ' ' + esc(String(a.pendiente).charAt(0).toLowerCase() + String(a.pendiente).slice(1))).join('<br>') : 'Nada pendiente') + '</div></a>').join('') + '</div></div>' +\n    pie);\n}\nreturn [{ json: { status: 200, html } }];\n"
+      }
+    },
+    {
+      "id": "f2097bae-d444-4072-9faa-5a01c24cb244",
+      "name": "Responder HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1024,
+        128
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "X-Robots-Tag",
+                "value": "noindex"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook tablero": {
+      "main": [
+        [
+          {
+            "node": "Leer tablero",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer tablero": {
+      "main": [
+        [
+          {
+            "node": "Leer casos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer casos": {
+      "main": [
+        [
+          {
+            "node": "Leer caso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer caso": {
+      "main": [
+        [
+          {
+            "node": "Armar página",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar página": {
+      "main": [
+        [
+          {
+            "node": "Responder HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

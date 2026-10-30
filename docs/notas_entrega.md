@@ -11,11 +11,11 @@ Repositorio: `andresforeroh11-ui/truora-support-copilot` · Video: _[enlace]_
 
 **Cómo lo validé.** Casi no hay reseñas públicas de Truora (6 en Capterra), así que usé su documentación técnica (catálogo de motivos de rechazo, reglas de WhatsApp, migración de `user_phone_number`, Hooks, revisión manual), su página de estado y sus vacantes. Los dolores del agente son hipótesis basadas en información pública, no datos internos.
 
-**La solución.** Un copiloto que, por cada ticket, decide **de dónde viene la falla** antes de decidir qué hacer: clasifica origen y severidad, redacta la primera respuesta con la base de conocimiento, arma la ficha para Ingeniería solo si el origen es la plataforma, detecta incidentes (3+ tickets iguales en 30 min) diciendo si parecen fuente externa o plataforma, responde preguntas del líder sobre un caso y le entrega un resumen cada mañana. **Nada llega al cliente sin aprobación humana**, porque es un negocio de identidad y datos personales.
+**La solución.** Un copiloto que, por cada ticket, decide **de dónde viene la falla** antes de decidir qué hacer: clasifica origen y severidad, redacta la primera respuesta con la base de conocimiento, arma la ficha para Ingeniería solo si el origen es la plataforma, detecta incidentes (3+ tickets iguales en 30 min) diciendo si parecen fuente externa o plataforma, responde preguntas del líder sobre un caso y le entrega cada mañana un reporte con el tablero de severidad × SLA y lo que necesita su decisión. **Nada llega al cliente sin aprobación humana**, porque es un negocio de identidad y datos personales.
 
-**Descartado:** respuesta automática sin humano (riesgo); tablero en Lovable (tiempo: el bot de Telegram cubre la interfaz); agrupar feedback para Producto como agente principal (menos medible en 4 días que la precisión de un clasificador).
+**Descartado:** respuesta automática sin humano (riesgo); tablero en Lovable (tiempo: el bot de Telegram y un tablero web servido por n8n cubren la interfaz); agrupar feedback para Producto como agente principal (menos medible en 4 días que la precisión de un clasificador).
 
-**Stack:** formulario de n8n (entrada) → 4 workflows de n8n (A triage, C aprobación y consultas, D resumen diario, E evaluación) → OpenAI gpt-4o-mini → Supabase (tickets, salidas, prompts versionados, métricas) → bot de Telegram y correo.
+**Stack:** formulario de n8n (entrada) → 5 workflows de n8n (A triage, C aprobación y consultas en Telegram, D reporte del líder, E evaluación, F tablero web) → OpenAI gpt-4o-mini → Supabase (tickets, salidas, prompts versionados, métricas) → bot de Telegram, correo y tablero web.
 
 ## 2. Prompts y por qué
 
@@ -24,7 +24,7 @@ Repositorio: `andresforeroh11-ui/truora-support-copilot` · Video: _[enlace]_
 | **P1 Clasificador** | Origen → severidad → ruta, en JSON | Temperatura 0, salida validada por esquema; la decisión en 3 pasos separa *a quién le toca* de *cuánto duele*; "un origen externo no baja la severidad"; ejemplos few-shot con códigos reales de la documentación |
 | **P2 Redactor** | Respuesta o comunicado proactivo | Solo usa la KB y el motivo de rechazo; pide datos en vez de inventar; nunca dice "fraude" ni pide datos personales completos, solo IDs de proceso |
 | **P3 Ficha de escalamiento** | Ficha para Ingeniería | Solo corre si el origen es la plataforma (o indeterminado P1/P2); hipótesis verificable con su certeza y 3–5 cosas concretas que revisar |
-| **P4 Resumen del líder** | Resumen de 24 h | Las cifras y el destino de cada patrón los calcula SQL; la IA solo redacta |
+| **P4 Resumen del líder** | Lectura del día y prioridad en el reporte | Las cifras, el semáforo y el destino de cada patrón los calcula SQL; la IA solo redacta |
 | **P5 Consulta de caso** | Responde "caso 1052 ¿ya se envió?" desde Telegram | Responde solo con la fila del caso; si no está el dato, lo dice |
 
 Todos los prompts viven versionados en la tabla `prompts`: cambiar uno no requiere tocar n8n.
@@ -48,13 +48,11 @@ De v2 a v3 corregí 4 patrones de error: atribuir a la plataforma cambios del cl
 
 ## 4. Retos y cómo los superé
 
-Llevé una bitácora de 22 retos (`docs/bitacora_retos.md`). Los que más enseñan:
+Los 7 retos principales, con la documentación que consulté y dónde replanteé el enfoque, están en `docs/bitacora_retos.md`. Los que más enseñan:
 
-1. **Verificar antes de afirmar.** Un dato sobre reintentos de webhooks venía de una página de Truora que ya no existe (404). Lo retiré de la KB en vez de afirmarlo. La API key la probé con una llamada real antes de concluir que no servía.
-2. **Medir y parar a tiempo.** La corrida 1 escalaba 4 casos que no eran de Ingeniería. Agrupé los errores en patrones, versioné P1-v3 y bajé a 1 (ver tabla).
-3. **Separar prueba de operación.** Las 60 clasificaciones de la evaluación disparaban alertas falsas de incidente. Creé una vista que excluye el set de prueba.
-4. **Quitarle decisiones a la IA.** P4 mandó una falla de plataforma a "Comunicación proactiva". En lugar de alargar el prompt, el destino lo calcula SQL con una regla fija y el modelo solo redacta.
-5. **Un incidente, un renglón.** La segunda oleada de la misma caída creaba otro incidente. Ahora el ticket se suma al incidente abierto sin repetir la alerta.
-6. **El control humano debe mostrar qué se aprueba.** Al usar el bot de verdad, "Editar" envió al cliente una pregunta como si fuera la respuesta. Ahora el texto editado se muestra completo y solo sale con "Enviar al cliente".
+1. **Verificar antes de afirmar.** Validé el problema con la documentación pública de Truora; un dato de una página que ya no existe lo retiré. La API key entregada la probé con una llamada real (`401`) antes de concluir que no servía.
+2. **Medir y parar a tiempo.** Agrupé los errores de la corrida 1 en 4 patrones y P1-v3 bajó los escalamientos innecesarios de 4 a 1 sin perder ningún P1. No hice una tercera corrida para no sobreajustar.
+3. **Quitarle decisiones a la IA.** Cuando P4 eligió mal un destino, no alargué el prompt: SQL decide y la IA redacta.
+4. **Probar como lo usa el líder.** Al usar el bot de verdad aparecieron dos fallas del control humano (editar y doble toque). Ahora el texto final siempre se ve antes de salir y cada envío ocurre una sola vez.
 
-**Lo que todavía no sé hacer bien:** desplegar esto sobre un help desk real y medir deriva del modelo en producción. Es el siguiente paso: conectar el help desk, validar con tickets reales anonimizados, consultar status.truora.com para confirmar fuentes caídas y medir el costo de P2–P5.
+**Lo que todavía no sé hacer:** no soy desarrollador (construí con Claude Code y puedo explicar cada pieza), y no lo he operado sobre un help desk real. El siguiente paso es conectarlo al help desk, validarlo con tickets reales anonimizados, consultar status.truora.com para confirmar fuentes caídas y medir el costo de P2–P5.

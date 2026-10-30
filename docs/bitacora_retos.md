@@ -1,31 +1,29 @@
-# Bitácora de retos
+# Retos y cómo los superé
 
-| Reto | Qué intenté | Qué funcionó | Fuente |
+Responde al punto **d** de las notas de la prueba y a los criterios de *resolución de problemas y autonomía*: cómo gestioné los obstáculos, dónde busqué documentación, cuándo replanteé el enfoque y qué no sé hacer todavía. Son los 7 retos que cambiaron el resultado; los ajustes menores quedan en el historial del repositorio.
+
+| # | Reto | Cómo lo superé | Documentación o replanteamiento |
 | --- | --- | --- | --- |
-| Validar que el enfoque respondiera a dolores reales de Truora | Buscar reseñas públicas: casi no hay | Usar documentación técnica, página de estado y vacantes; agregar `origen_falla` al clasificador | dev.truora.com, status.truora.com, Capterra |
-| Dato de "5 reintentos con backoff" del webhook | Verificarlo en la guía original | La página ya no existe (404) y la guía vigente no lo menciona: se retiró de la KB en vez de afirmarlo | dev.truora.com/guides/web_webhooks/ |
-| Conector de Supabase no veía el proyecto | Autorizar el conector | El proyecto estaba en otra cuenta: reconectar con la cuenta dueña del proyecto | Supabase MCP (error "sin permiso") |
-| API key de OpenAI entregada por Truora | Repegarla, revisar formato | Llamada real en n8n: `401 invalid_api_key` con la clave completa → no está activa; se reportó a Truora y se siguió con clave propia | Error de la API de OpenAI |
-| Clave propia sin saldo | Ejecutar el flujo | `429 insufficient_quota` → cargar saldo mínimo con límite de gasto | Error de la API de OpenAI |
-| Precisión de la corrida 1 (73% severidad, 67% origen, 4 escalamientos innecesarios) | Revisar los errores uno a uno | Agruparlos en 4 patrones y crear P1-v3 versionado en Supabase; corrida 2: 80% / 87% / 1 | docs/evaluacion.md |
-| Alertas de incidente falsas (México "plataforma" con 13 tickets; Colombia duplicada) | Revisar qué filas leía la detección | Las 60 clasificaciones de las corridas de evaluación contaban como tickets recientes: se creó la vista `v_clasificaciones_vivas` (excluye el set de prueba). Prueba nueva: 1 sola alerta, firma fuente externa, 4 tickets de Colombia | Supabase, ejecución n8n #19–20 |
-| El nodo de Telegram no permite botones condicionales | Un solo mensaje con todos los botones | Un IF después de componer el mensaje: con ficha P3 se envía la versión con el botón "Confirmar escalamiento"; sin ficha, la de 3 botones | Workflow A |
-| Las consultas al bot fallaban antes de llegar al switch | Leer la respuesta antes de decidir la acción | "Leer respuesta" necesitaba un ID que las consultas no traen: se movió a la rama de Aprobar | Workflow C |
-| Enviar correos sin credencial publicada | Publicar los cambios de C antes de conectar Gmail | Se editó el borrador sin publicar (la versión activa siguió atendiendo botones) y se publicó solo cuando la credencial de Gmail existió; cada envío registra estado y error | n8n, tabla correos_enviados |
-| Leer la vacante completa para alinear el agente y la HV | Extraer el texto de la página de forma automática | La página bloquea la extracción automática: se pegó el texto y se guardó en el proyecto | Truora careers (PeopleForce) |
+| 1 | **Validar que el problema fuera real sin datos internos de Truora.** Casi no hay reseñas públicas (6 en Capterra). | Usé la documentación técnica pública como evidencia de los dolores y agregué al clasificador el campo `origen_falla`: separa lo que es de Truora de lo que es del gobierno, de Meta, de la integración del cliente o del usuario final. Un dato sobre reintentos de webhooks venía de una página que ya no existe (404): lo retiré en vez de afirmarlo. | dev.truora.com (motivos de rechazo, reglas de WhatsApp, Hooks, revisión manual, migración de `user_phone_number`), status.truora.com. **Replanteamiento:** de "clasificar tickets" a "decidir primero a quién le toca". |
+| 2 | **La API key de OpenAI que entregó Truora no funcionaba.** | La probé con una llamada real antes de concluir (`401 invalid_api_key`), lo reporté y seguí con una clave propia del mismo proveedor. Esa clave no tenía saldo (`429 insufficient_quota`): cargué un monto mínimo con límite de gasto. | Códigos de error de la API de OpenAI. |
+| 3 | **La primera versión del clasificador acertaba poco:** 73 % en severidad, 67 % en origen y 4 escalamientos innecesarios a Ingeniería. | Revisé los 30 errores uno a uno y los agrupé en 4 patrones (cambios del cliente atribuidos a la plataforma, severidad inflada, origen adivinado en vez de "indeterminado", consultas tratadas como "no aplica"). Con P1-v3 llegó a **80 % y 87 %, 1 escalamiento innecesario y 0 P1 perdidos**. Paré en la segunda corrida para no sobreajustar al mismo set. | Medición en SQL (`v_metricas_corrida`), no autoevaluada por el modelo. Detalle en `docs/evaluacion.md`. |
+| 4 | **Alertas de incidente falsas y duplicadas.** Las corridas de evaluación disparaban incidentes, y la segunda oleada de una misma caída creaba un incidente nuevo. | Separé los datos de prueba de la operación con una vista que excluye el set de evaluación. El ticket que llega con un incidente abierto (24 h) se suma a ese incidente sin repetir la alerta. | Revisión de las ejecuciones de n8n y de la tabla `incidentes`. |
+| 5 | **El modelo tomaba decisiones que no debía.** En el resumen diario mandó una falla de plataforma a "Comunicación proactiva" y, al corregirlo, empezó a copiar etiquetas técnicas. | En lugar de alargar el prompt, le quité la decisión: SQL calcula las cifras, el semáforo y el destino de cada patrón con una regla fija; la IA solo redacta. | **Replanteamiento:** la regla de diseño pasó a ser "SQL decide, la IA redacta". P4 tuvo 3 versiones hasta llegar ahí. |
+| 6 | **El control humano fallaba al usar el bot de verdad.** "Editar" envió al cliente una pregunta como si fuera la respuesta, y un doble toque en "Confirmar escalamiento" mandó dos correos a Ingeniería. | Antes de enviar, el líder ve el texto final y lo confirma con "Enviar al cliente". Cada acción reserva el registro en la base de datos (`abierto → enviando`); el segundo toque no encuentra nada que enviar y avisa "ya se envió". Verificado con un triple toque: 1 solo correo. | Pruebas en Telegram como las haría el líder, no solo desde el editor de n8n. |
+| 7 | **El reporte del líder era largo y no llevaba al detalle.** En Telegram una foto no admite clics por zona y un álbum no admite botones. | Lo rediseñé en capas: una foto con el tablero (severidad × SLA), los pendientes que necesitan decisión y botones de detalle. Agregué un tablero web (flujo F) donde cada cifra abre la lista de casos y cada caso abre su ficha, con enlace de vuelta al bot para aprobar. | Límites de Telegram (álbum sin botones) y de QuickChart (las URLs cortas gratuitas vencen a los 3 días: uso URLs completas). **Replanteamiento:** lo ejecutivo primero, el detalle a un toque. |
 
-## 28 oct · Resumen diario, gráficas y uso real del bot
+## Lo que todavía no sé hacer
 
-| Reto | Qué intenté | Qué funcionó | Fuente |
-| --- | --- | --- | --- |
-| Gráficas en Telegram y en el correo del resumen | URLs cortas de QuickChart | Las URLs cortas gratuitas vencen a los 3 días (un correo abierto después mostraría imágenes rotas): se usan URLs completas, que llevan la configuración dentro y no vencen | Documentación de QuickChart |
-| Medir cuántos casos se resuelven con base de conocimiento y cuántos van a gestión interna | Hablar de casos "automáticos" | 5 categorías calculadas en SQL con el estado real del caso; se dice "resuelto con base de conocimiento" porque siempre hay aprobación humana | `v_graficas_diarias.gestion_24h` (80 % con KB el 28 oct) |
-| P4 envió a "Comunicación proactiva" un patrón de origen `truora` | P4-v1 elegía el destino con definiciones en el prompt | El destino se calcula en SQL con una regla fija; P4-v2 solo lo copia y la línea fija del reporte lo muestra desde SQL | Ejecución del resumen 28 oct 11:12 |
-| P4-v2 copiaba etiquetas técnicas ("regla_destino:", "firma: fuente_externa") | Pedirle copiar el destino tal cual | P4-v3 prohíbe nombres de campos y valores con guion bajo y fija el formato de cada línea con ejemplos | Ejecución del 28 oct 12:03 |
-| El mismo incidente (Registraduría) salía en dos renglones | Causa: la búsqueda de incidentes abiertos solo miraba 30 min; la segunda oleada (1 h después) creó otro | Buscar abiertos de 24 h y sumar el ticket al incidente existente sin repetir la alerta; las vistas agrupan las oleadas | Tabla `incidentes` (19:17 y 20:37 del 27 oct) |
-| Gráficas poco profesionales y sin valores | Paleta genérica | Paleta del CSS público de truora.com (sin logo), números en cada barra, número y % en la dona; revisión visual antes de publicar | truora.com |
-| La línea de tendencia bajaba de 0 entre puntos | Suavizado con tensión 0.3 | Interpolación monótona | Revisión visual |
-| El bot no respondía a "caso 1048 …" | La lógica estaba bien: el flujo C no recibía mensajes. Causa probable: probar el disparador de Telegram desde el editor deja el bot sin el webhook de producción | Re-publicar el flujo C. Regla: probarlo escribiéndole al bot, no desde el editor | Historial de ejecuciones del flujo C |
-| La consulta decía que el incidente tenía 3 casos (faltaban 3) | `v_caso_detalle` tomaba solo el último registro de incidente | La vista agrupa las oleadas igual que el resumen | Consulta del caso 1048 |
-| Al consultar un caso pendiente no salían los botones | La respuesta se enviaba sin teclado | Botones según el estado del caso (borrador pendiente, escalamiento abierto, ambos o ninguno) | Prueba en Telegram |
-| "Editar" envió al cliente una pregunta ("cual es el borrador") como respuesta final | El mensaje de edición no mostraba el borrador y el texto respondido se enviaba sin revisión | La consulta muestra el borrador tal cual; Editar muestra el texto actual; el texto corregido solo se envía tras tocar "Enviar al cliente" viendo la versión final | Correo demo del caso #1048 |
+- **No soy desarrollador.** Construí los flujos, las vistas y el repositorio con apoyo de Claude Code; cada nodo lo puedo explicar, pero no escribiría este código solo desde cero.
+- **No lo he operado con tickets reales.** Falta conectarlo a un help desk, validarlo con un set separado de tickets anonimizados y medir la deriva del modelo en producción.
+- **Costo completo de la IA.** Hoy solo se mide el costo de P1; falta registrar el de P2 a P5.
+- **Seguridad del tablero web.** Usa una llave en el enlace; en producción necesita autenticación real.
+
+## Versiones
+
+| Pieza | Versiones |
+| --- | --- |
+| Prompts | 8 versiones en la tabla `prompts`: P1 (v2 → v3), P4 (v1 → v3), P2, P3 y P5 (v1). 5 activas |
+| Evaluación del clasificador | 2 corridas sobre 30 tickets etiquetados |
+| Flujos de n8n | 5: A triage, C Telegram, D reporte del líder, E evaluación, F tablero web |
+| Base de datos | 22 migraciones en Supabase, consolidadas en 13 archivos de `sql/` |
